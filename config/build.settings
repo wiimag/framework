@@ -1,5 +1,19 @@
+# Main application names
 APP_NAME=App
 PROJECT_ID=app
+
+# Product info
+PRODUCT_NAME=Example
+PRODUCT_COMPANY=Wiimag Inc.
+PRODUCT_DESCRIPTION=Application Framework Example
+PRODUCT_CODE_NAME=example
+PRODUCT_COPYRIGHT=Copyright (C) 2022-2023 - equals-forty-two.com - All rights reserved
+PRODUCT_WINDOWS_FILENAME=app.exe
+
+# Version info
+VERSION_MAJOR=0
+VERSION_MINOR=1
+VERSION_PATCH=0
 
 # Build settings (Usually passed to Cmake)
 BUILD_SERVICE_EXE=OFF

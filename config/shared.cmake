@@ -109,8 +109,13 @@ function(read_build_settings_property property_name property_value)
     # Read the build.settings file
     file(READ ${CMAKE_CURRENT_SOURCE_DIR}/config/build.settings BUILD_SETTINGS_FILE)
 
-    # Find the property in the build.settings file
+    # Find the property in the build.settings file and read the entire line
     string(REGEX MATCH "${property_name}=([^\n\r]*)" PROPERTY_LINE ${BUILD_SETTINGS_FILE})
+
+    # Check if the property was found
+    if("${PROPERTY_LINE}" STREQUAL "")
+        message(FATAL_ERROR "Property ${property_name} not found in ${CMAKE_CURRENT_SOURCE_DIR}/config/build.settings file")
+    endif()
 
     # Extract the property value
     string(REGEX MATCH "=(.*)" PROPERTY_VALUE ${PROPERTY_LINE})

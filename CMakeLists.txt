@@ -124,6 +124,32 @@ add_compile_options("$<$<CONFIG:DEPLOY>:-DBUILD_ENABLE_MEMORY_GUARD=1>")
 add_compile_options("$<$<CONFIG:DEPLOY>:-DBUILD_ENABLE_MEMORY_STATISTICS=1>")
 add_compile_options("$<$<CONFIG:DEPLOY>:-DBUILD_ENABLE_STATIC_HASH_DEBUG=1>")
 
+# Set program information defines
+read_build_settings_property("PRODUCT_NAME" PRODUCT_NAME)
+add_compile_options(-DPRODUCT_NAME="${PRODUCT_NAME}")
+
+read_build_settings_property("PRODUCT_COMPANY" PRODUCT_COMPANY)
+add_compile_options(-DPRODUCT_COMPANY="${PRODUCT_COMPANY}")
+
+read_build_settings_property("PRODUCT_DESCRIPTION" PRODUCT_DESCRIPTION)
+add_compile_options(-DPRODUCT_DESCRIPTION="${PRODUCT_DESCRIPTION}")
+
+read_build_settings_property("PRODUCT_COPYRIGHT" PRODUCT_COPYRIGHT)
+add_compile_options(-DPRODUCT_COPYRIGHT="${PRODUCT_COPYRIGHT}")
+
+read_build_settings_property("PRODUCT_CODE_NAME" PRODUCT_CODE_NAME)
+add_compile_options(-DPRODUCT_CODE_NAME="${PRODUCT_CODE_NAME}")
+
+# Set product version defines
+read_build_settings_property("VERSION_MAJOR" VERSION_MAJOR)
+add_compile_options(-DVERSION_MAJOR=${VERSION_MAJOR})
+
+read_build_settings_property("VERSION_MINOR" VERSION_MINOR)
+add_compile_options(-DVERSION_MINOR=${VERSION_MINOR})
+
+read_build_settings_property("VERSION_PATCH" VERSION_PATCH)
+add_compile_options(-DVERSION_PATCH=${VERSION_PATCH})
+
 # If the option BUILD_ENABLE_LOCALIZATION is OFF, then disable localization
 if(NOT BUILD_ENABLE_LOCALIZATION)
     add_compile_options(-DBUILD_ENABLE_LOCALIZATION=0)

@@ -177,6 +177,10 @@ endif()
 
 # Write the executable file to the build folder directly without any configuration sub folder
 if (MSVC)
+
+    # Define PRODUCT_WINDOWS_FILENAME
+    add_compile_options(-DPRODUCT_WINDOWS_FILENAME="${AppId}.exe")
+
     # Create executable
     add_executable(${AppId} WIN32
         ${APP_SOURCES}
