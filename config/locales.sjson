@@ -1,0 +1,155 @@
+{
+	images = []
+	strings = [
+		{
+			fr = "<racine>"
+			en = "<root>"
+		}
+		{
+			hash = "315259d58df4971e"
+			en = "File"
+			fr = "Fichier"
+			it = "File"
+		}
+		{
+			hash = "8d9ff505bf4a8d97"
+			en = "\xee\xa2\xb8 Settings ##Settings"
+			fr = "\xee\xa2\xb8 Param\xc3\xa8tres ##Settings"
+		}
+		{
+			hash = "e85cb85742aca2c7"
+			en = "Language"
+			fr = "Langue"
+		}
+		{
+			hash = "c29864d9b8d44011"
+			en = "Font scaling"
+			fr = "Taille de la police"
+		}
+		{
+			hash = "86f60888f62f3e63"
+			en = "Frame Throttling"
+			fr = "Temps de rafrachissement"
+		}
+		{
+			hash = "40c96ee67e70b275"
+			en = "%d milliseconds"
+			fr = "%d millisecondes"
+		}
+		{
+			hash = "7c3a4fd11ab3bba7"
+			en = "Time to wait before rendering another frame (ms).\nThe higher the number, less resources are used, therefore more battery time!"
+			fr = "Temps \xc3\xa0 attendre avant de rafraichir l'\xc3\xa9cran (ms).\nPlus le nombre est \xc3\xa9lev\xc3\xa9, moins de ressources sont utilis\xc3\xa9es, donc plus d'autonomie !"
+		}
+		{
+			hash = "58aa8ad1c1165789"
+			en = "Windows"
+			fr = "Fen\xc3\xaatres"
+		}
+		{
+			hash = "5500876517d161e7"
+			en = "Help"
+			fr = "Aide"
+		}
+		{
+			hash = "3cd9abbe69023cf5"
+			en = "Create"
+			fr = "Nouveau"
+		}
+		{
+			hash = "cba02097bd28edff"
+			en = "Open"
+			fr = "Ouvrir"
+		}
+		{
+			hash = "2db70e0343e151ce"
+			en = "\xee\xa1\xb9 Exit"
+			fr = "\xee\xa1\xb9 Quitter"
+		}
+		{
+			hash = "6b148d06922621a5"
+			en = "\xee\xab\x96 Console"
+			fr = "\xee\xab\x96 Console"
+		}
+		{
+			hash = "e238e56710ae711f"
+			en = "\xee\xab\x96 Test Runner"
+			fr = "\xee\xab\x96 Test Runner"
+		}
+		{
+			hash = "4ce3491c214c6d9c"
+			en = "About"
+			fr = "A propos"
+		}
+		{
+			hash = "24ad4dccb5387e92"
+			en = "Show Debug Logs"
+			fr = "Afficher les logs de d\xc3\xa9bug"
+		}
+		{
+			hash = "4bb994bfcdedfc77"
+			en = "Show Memory Stats"
+			fr = "Afficher les statistiques de m\xc3\xa9moire"
+		}
+		{
+			hash = "c22bb6c30fc026c8"
+			en = "Show Memory Usages"
+			fr = "Afficher l'utilisation de la m\xc3\xa9moire"
+		}
+		{
+			hash = "a995e716ca445020"
+			en = "Hello World!"
+			fr = "Bonjour le monde !"
+		}
+		{
+			hash = "3b89bec5b35142c3"
+			en = "\xee\xac\xb9 Example "
+			fr = "\xee\xac\xb9 Exemple "
+		}
+		{
+			hash = "db7f29cfe3fa3b66"
+			en = "About - %s##8"
+			fr = "À propos - %s##8"
+		}
+		{
+			hash = "384737c232119ae6"
+			en = "Application Framework Example"
+			fr = "Application Framework Exemple"
+		}
+		{
+			hash = "abfb736e230e26cc"
+			en = "Version %s %.*s (%s)"
+			fr = "Version %s %.*s (%s)"
+		}
+		{
+			hash = "4de6c636a936ac13"
+			en = "Copyright (C) 2022-2023 - equals-forty-two.com - All rights reserved"
+			fr = "Copyright (C) 2022-2023 - equals-forty-two.com - Tous droits réservés"
+		}
+		{
+			hash = "939f9f77732b5991"
+			en = "This software is provided 'as-is', without any express or implied warranty. In no event will the authors be held liable for any damages arising from the use of this software."
+			fr = "Ce logiciel est fourni 'tel quel', sans aucune garantie expresse ou implicite. En aucun cas les auteurs ne pourront être tenus responsables de tout dommage découlant de l'utilisation de ce logiciel."
+		}
+		{
+			hash = "720a1625a590e4cd"
+			en = "Build %s"
+			fr = "Build %s"
+		}
+		{
+			hash = "69b093d6f69dc568"
+			en = "Commit %s"
+			fr = "Commit %s"
+		}
+		{
+			hash = "3957ecf9afa94c56"
+			en = "Renderer %s"
+			fr = "Moteur de rendu %s"
+		}
+		{
+			hash = "bb8a54cdfd4df0ff"
+			en = "This software uses the following third-party libraries:"
+			fr = "Ce logiciel utilise les bibliothèques tierces suivantes :"
+		}
+	]
+}
