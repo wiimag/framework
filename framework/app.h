@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include "version.h"
+
 // Include most common application headers
 #include <framework/jobs.h>
 #include <framework/tabs.h>

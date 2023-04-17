@@ -8,7 +8,7 @@ PRODUCT_COMPANY=Wiimag Inc.
 PRODUCT_DESCRIPTION=Application Framework Example
 PRODUCT_CODE_NAME=example
 PRODUCT_COPYRIGHT=Copyright (C) 2022-2023 - equals-forty-two.com - All rights reserved
-PRODUCT_WINDOWS_FILENAME=app.exe
+PRODUCT_URL=https://equals-forty-two.com
 
 # Version info
 VERSION_MAJOR=1
