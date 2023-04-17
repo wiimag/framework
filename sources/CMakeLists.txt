@@ -28,6 +28,8 @@ source_group("app" FILES ${APP_SOURCES})
 file(GLOB RESOURCES_SOURCES
     "${ROOT_DIR}/resources/*.ico"
     "${ROOT_DIR}/resources/*.manifest"
+    "${ROOT_DIR}/config/locales.sjson"
+    "${ROOT_DIR}/config/build.settings"
     "${CMAKE_CURRENT_SOURCE_DIR}/*.rc"
 )
 source_group("resources" FILES ${RESOURCES_SOURCES})

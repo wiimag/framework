@@ -1,5 +1,5 @@
 # Main application names
-APP_NAME=App
+APP_NAME=Example
 PROJECT_ID=app
 
 # Product info
@@ -12,7 +12,7 @@ PRODUCT_WINDOWS_FILENAME=app.exe
 
 # Version info
 VERSION_MAJOR=1
-VERSION_MINOR=0
+VERSION_MINOR=1
 VERSION_PATCH=0
 
 # Build settings (Usually passed to Cmake)

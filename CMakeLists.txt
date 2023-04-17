@@ -2,7 +2,6 @@
 # Copyright 2022-2023 - All rights reserved.
 # License: https://equals-forty-two.com/LICENSE
 #
-#
 # CMake entry point to build the project solutions
 #
 # Here's an example of how to use this file using the latest version of Visual Studio:
@@ -308,6 +307,9 @@ add_subdirectory(${ROOT_DIR}/external/imgui)
 
 # Load main framework library
 add_subdirectory(${ROOT_DIR}/framework)
+
+# Load docs project
+add_subdirectory(${ROOT_DIR}/docs)
 
 # Include config/extras.cmake if it exists
 if(EXISTS ${ROOT_DIR}/config/extras.cmake)

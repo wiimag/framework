@@ -72,16 +72,6 @@ while [[ $# -gt 0 ]]; do
       NO_COLOR=1
       shift # past argument
       ;;
-    -n|--name)
-      SHORT_NAME="$2"
-      shift # past argument
-      shift # past value
-      ;;
-    -a|--app-name)
-      APP_NAME="$2"
-      shift # past argument
-      shift # past value
-      ;;
     b|build)
       # Update the command counter
       COMMAND_COUNTER=$((COMMAND_COUNTER+1))
@@ -228,8 +218,6 @@ if [ $HELP -ge 1 ]; then
   echo ""
   echo "  Optional arguments:"
   echo "   -h, --help            Show this help message and exit"
-  echo "   -n, --name <name>     Specify the solution name (used to open the workspace are launch the exe on Windows)"
-  echo "   -a, --app-name <name> Specify the App name to launch application on MacOS"
   echo "   --verbose             Increase the verbosity of the bash script"
   echo "   --no-color            Disable color output"
   echo ""

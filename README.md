@@ -56,7 +56,7 @@ I also recommend using [Visual Studio Code](https://code.visualstudio.com/downlo
 ### Clone the repository
 
 ```bash
-git clone git@github.com:Infineis/framework.git <APP_NAME>
+git clone git@github.com:Infineis/framework.git <app_name>
 ```
 
 ### Edit build settings
@@ -154,9 +154,3 @@ The solution will be generated in the `projects/.build` folder.
 ```
 
 This will generate the solution, build it, run the tests, open the workspace, and start the application (or course if everything went well!).
-
-# TODOs
-
-- [ ] Add support for Linux
-- [ ] Add build setting COMPANY_NAME, COMPANY_ID and COMPANY_DOMAIN
-- [ ] Move PRODUCT_* defines to CMake build settings
