@@ -485,6 +485,9 @@ if [ $TESTS -ge 1 ]; then
   echo -e "${green}${italic}Running ${APP_NAME} tests with arguments: ${ADDITIONAL_ARGS[@]}${normal}"
   echo
 
+  # Delete old test log
+  rm -f artifacts/tests.log 2> /dev/null
+
   if [ ${machine} == "MinGw" ]; then
     ./build/${SHORT_NAME}.exe --run-tests ${ADDITIONAL_ARGS[@]}
   elif [ ${machine} == "Mac" ]; then
@@ -496,7 +499,7 @@ if [ $TESTS -ge 1 ]; then
     echo
     echo -e "${red}===TESTS FAILED ($retval)===${normal}"
     echo
-    cat artifacts/tests.log
+    cat artifacts/tests.log 2> /dev/null
     exit $retval
   fi
 

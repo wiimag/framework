@@ -3,6 +3,7 @@
 ## [1.1.0@next] - 2023-04-17
 - Add markdown files to generate solution under extras/docs
 - Add PRODUCT_* and VERSION_* variables in build.settings to consumed by CMake at build time
+- Fail if user try to run tests in deploy mode
 
 ## [1.0.0] - 2023-04-16
 - First release
