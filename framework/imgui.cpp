@@ -19,7 +19,7 @@
 
 #if FOUNDATION_PLATFORM_WINDOWS
 
-    #include <resource.h>
+    #include <framework/resource.h>
     #include <foundation/windows.h>
     
 #elif FOUNDATION_PLATFORM_MACOS

@@ -7,7 +7,7 @@
 
 #if FOUNDATION_PLATFORM_WINDOWS
 
-    #include <resource.h>
+    #include <framework/resource.h>
 
     #pragma comment( lib, "glfw3.lib" )
 

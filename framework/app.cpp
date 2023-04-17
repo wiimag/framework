@@ -13,8 +13,7 @@
  */
 
 #include "app.h"
-
-#include <version.h>
+#include "version.h"
 
 #include <framework/imgui.h>
 #include <framework/module.h>

@@ -19,7 +19,7 @@
 #include <foundation/environment.h>
 
 #if FOUNDATION_PLATFORM_WINDOWS
-#include <resource.h>
+#include <framework/resource.h>
 #include <foundation/windows.h>
 #endif
 

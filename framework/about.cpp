@@ -6,8 +6,7 @@
 #if BUILD_APPLICATION
 
 #include "about.h"
-
-#include <version.h>
+#include "version.h"
 
 #include <framework/app.h>
 #include <framework/bgfx.h>

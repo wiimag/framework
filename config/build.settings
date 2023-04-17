@@ -11,8 +11,8 @@ PRODUCT_COPYRIGHT=Copyright (C) 2022-2023 - equals-forty-two.com - All rights re
 PRODUCT_WINDOWS_FILENAME=app.exe
 
 # Version info
-VERSION_MAJOR=0
-VERSION_MINOR=1
+VERSION_MAJOR=1
+VERSION_MINOR=0
 VERSION_PATCH=0
 
 # Build settings (Usually passed to Cmake)

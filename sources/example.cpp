@@ -3,12 +3,13 @@
  * License: https://equals-forty-two.com/LICENSE
  */
 
-#include "version.h"
+
 #include "settings.h"
 
 #include <framework/app.h>
 #include <framework/glfw.h>
 #include <framework/query.h>
+#include <framework/version.h>
 
 #include <foundation/foundation.h>
 
