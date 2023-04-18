@@ -798,6 +798,16 @@ struct expr_result_t
             return string_compare_less(STRING_ARGS(s1), STRING_ARGS(s2));
         }
 
+        if (is_set())
+        {
+            for (auto e : *this)
+            {
+                if (e >= rhs)
+                    return false;
+            }
+            return true;
+        }
+
         FOUNDATION_ASSERT_FAIL("Unsupported");
         return *this;
     }
@@ -815,6 +825,17 @@ struct expr_result_t
 
         if (type == EXPR_RESULT_ARRAY && index != NO_INDEX)
             return list[index] > rhs;
+
+        if (is_set())
+        {
+            for (auto e : *this)
+            {
+                if (e <= rhs)
+                    return false;
+            }
+
+            return true;
+        }
 
         FOUNDATION_ASSERT_FAIL("Unsupported");
         return *this;
@@ -848,6 +869,17 @@ struct expr_result_t
         if (type == EXPR_RESULT_NUMBER)
             return expr_result_t(value >= rhs.as_number());
 
+        if (is_set())
+        {
+            for (auto e : *this)
+            {
+                if (e < rhs)
+                    return false;
+            }
+
+            return true;
+        }
+
         FOUNDATION_ASSERT_FAIL("Unsupported");
         return *this;
     }
@@ -860,6 +892,9 @@ struct expr_result_t
 
         if (type == EXPR_RESULT_NULL && rhs.type == EXPR_RESULT_NUMBER)
             return rhs.as_number(0) == 0;
+
+        if (type == EXPR_RESULT_NULL)
+            return false;
 
         if (type == EXPR_RESULT_TRUE && rhs.type == EXPR_RESULT_TRUE)
             return true;

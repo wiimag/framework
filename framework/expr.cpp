@@ -151,7 +151,7 @@ string_const_t expr_result_string_join(const expr_result_t& e, const char* fmt)
     const uint32_t element_count = e.element_count();
     if (element_count > 99)
         return string_format_static(STRING_CONST("[too many values (%u)...]"), element_count);
-    return string_join((const T*)e.ptr, e.element_count(), [fmt](const T& v)
+    return string_join((const T*)e.ptr, element_count, [fmt](const T& v)
     {
         static thread_local char buf[32];
         string_t f = string_format(STRING_BUFFER(buf), fmt, string_length(fmt), v);
@@ -195,34 +195,36 @@ string_const_t expr_result_t::as_string(const char* fmt /*= nullptr*/) const
         uint16_t element_size = this->element_size();
         if ((index & EXPR_POINTER_ARRAY_FLOAT))
         {
-            if (element_size == 4) return expr_result_string_join<float>(*this, "%.4f");
-            else if (element_size == 8) return expr_result_string_join<double>(*this, "%.4lf");
+            if (element_size == 4) return expr_result_string_join<float>(*this, fmt ? fmt : "%.4f");
+            else if (element_size == 8) return expr_result_string_join<double>(*this, fmt ? fmt : "%.4lf");
         }
         else if ((index & EXPR_POINTER_ARRAY_INTEGER))
         {
             if ((index & EXPR_POINTER_ARRAY_UNSIGNED) == EXPR_POINTER_ARRAY_UNSIGNED)
             {
-                if (element_size == 1) return expr_result_string_join<uint8_t>(*this, "%u");
-                else if (element_size == 2) return expr_result_string_join<uint16_t>(*this, "%hu");
-                else if (element_size == 4) return expr_result_string_join<uint32_t>(*this, "%u");
-                else if (element_size == 8) return expr_result_string_join<uint64_t>(*this, "%llu");
+                if (element_size == 1) return expr_result_string_join<uint8_t>(*this, fmt ? fmt : "%u");
+                else if (element_size == 2) return expr_result_string_join<uint16_t>(*this, fmt ? fmt : "%hu");
+                else if (element_size == 4) return expr_result_string_join<uint32_t>(*this, fmt ? fmt : "%u");
+                else if (element_size == 8) return expr_result_string_join<uint64_t>(*this, fmt ? fmt : "%llu");
             }
             else
             {
-                if (element_size == 1) return expr_result_string_join<int8_t>(*this, "%d");
-                else if (element_size == 2) return expr_result_string_join<int16_t>(*this, "%hd");
-                else if (element_size == 4) return expr_result_string_join<int32_t>(*this, "%d");
-                else if (element_size == 8) return expr_result_string_join<int64_t>(*this, "%lld");
+                if (element_size == 1) return expr_result_string_join<int8_t>(*this, fmt ? fmt : "%d");
+                else if (element_size == 2) return expr_result_string_join<int16_t>(*this, fmt ? fmt : "%hd");
+                else if (element_size == 4) return expr_result_string_join<int32_t>(*this, fmt ? fmt : "%d");
+                else if (element_size == 8) return expr_result_string_join<int64_t>(*this, fmt ? fmt : "%lld");
             }
         }
         return string_format_static(STRING_CONST("0x%p (%d [%d])"), ptr, element_count, this->element_size());
     }
 
+    FOUNDATION_ASSERT_FAIL("Unsupported");
     return string_null();
 }
 
 expr_result_t expr_eval_symbol(string_table_symbol_t symbol)
 {
+    // FIXME: Here we assume that expression symbols are stored in the global string table
     expr_result_t r(EXPR_RESULT_SYMBOL);
     r.value = (double)symbol;
     return r;
@@ -340,7 +342,6 @@ FOUNDATION_STATIC expr_result_t expr_eval_create_date(const expr_func_t* f, vec_
     return (double)time_make(year, month, day, 0, 0, 0, 0);
 }
 
-
 FOUNDATION_STATIC expr_result_t expr_eval_time_now(const expr_func_t* f, vec_expr_t* args, void* c)
 {
     return (double)time_now();
@@ -364,6 +365,9 @@ template<typename T> T max_range(const T* ptr, unsigned count)
 
 FOUNDATION_STATIC expr_result_t expr_eval_raw_math_min(void* ptr, uint16_t element_size, uint32_t element_count, uint64_t flags)
 {
+    if (element_size == 0)
+        return NIL;
+
     if ((flags & EXPR_POINTER_ARRAY_FLOAT))
     {
         if (element_size == 4)
@@ -393,12 +397,15 @@ FOUNDATION_STATIC expr_result_t expr_eval_raw_math_min(void* ptr, uint16_t eleme
         return (double)min_range((const int64_t*)ptr, element_count);
     }
 
-    FOUNDATION_ASSERT(!"Unsupported");
+    FOUNDATION_ASSERT_FAIL("Unsupported");
     return NIL;
 }
 
 FOUNDATION_STATIC expr_result_t expr_eval_raw_math_max(void* ptr, uint16_t element_size, uint32_t element_count, uint64_t flags)
 {
+    if (element_size == 0)
+        return NIL;
+
     if ((flags & EXPR_POINTER_ARRAY_FLOAT))
     {
         if (element_size == 4)
@@ -428,12 +435,15 @@ FOUNDATION_STATIC expr_result_t expr_eval_raw_math_max(void* ptr, uint16_t eleme
         return (double)max_range((const int64_t*)ptr, element_count);
     }
 
-    FOUNDATION_ASSERT(!"Unsupported");
+    FOUNDATION_ASSERT_FAIL("Unsupported");
     return NIL;
 }
 
 FOUNDATION_STATIC expr_result_t expr_eval_raw_math_sum(void* ptr, uint16_t element_size, uint32_t element_count, uint64_t flags)
 {
+    if (element_size == 0)
+        return NIL;
+
     if ((flags & EXPR_POINTER_ARRAY_FLOAT))
     {
         if (element_size == 4)
@@ -463,7 +473,7 @@ FOUNDATION_STATIC expr_result_t expr_eval_raw_math_sum(void* ptr, uint16_t eleme
         return std::accumulate((const int64_t*)ptr, (const int64_t*)ptr + element_count, 0.0);
     }
 
-    FOUNDATION_ASSERT(!"Unsupported");
+    FOUNDATION_ASSERT_FAIL("Unsupported");
     return NIL;
 }
 
@@ -736,9 +746,6 @@ FOUNDATION_STATIC expr_result_t expr_eval_if(const expr_func_t* f, vec_expr_t* a
 
 FOUNDATION_STATIC void expr_array_sort(expr_result_t* elements, bool (*comparer)(const expr_result_t& a, const expr_result_t& b, bool ascending, size_t vindex), bool ascending, size_t vindex)
 {
-    if (elements == nullptr)
-        return;
-
     const int len = array_size(elements);
     for (int i = 0; i < len - 1; ++i)
     {
@@ -781,7 +788,7 @@ FOUNDATION_STATIC bool expr_sort_results_comparer(const expr_result_t& a, const 
 FOUNDATION_STATIC expr_result_t expr_eval_sort(const expr_func_t* f, vec_expr_t* args, void* c)
 {
     // Examples: SORT([2, 1, 3]) => [1, 2, 3]
-    //           SORT([33, 1, 0, true, 6, [2, 14]], 1, 1) == [0, 1, 6, [2, 14], 33, true]
+    //           SORT([33, 1.1, 0, true, 6, [2, 14]], 1, 1) == [0, true, 1.1, 6, [2, 14], 33]
     //           SORT(R(_300K, ps), DESC, 1)
     //           MAP(SORT(R(_300K, change_p), DESC, 1), INDEX($1, 0))
 
@@ -1065,6 +1072,7 @@ FOUNDATION_STATIC expr_result_t expr_eval_array_index(const expr_func_t* f, vec_
         arr = elm;
     }
 
+    FOUNDATION_ASSERT_FAIL("Unsupported");
     return arr;
 }
 
@@ -1094,16 +1102,16 @@ const char* expr_error_cstr(int error_code)
 {
     switch (error_code)
     {
-    case EXPR_ERROR_ALLOCATION_FAILED: return "Allocation failed";
-    case EXPR_ERROR_UNEXPECTED_NUMBER: return "Unexpected number";
-    case EXPR_ERROR_UNEXPECTED_WORD: return "Unexpected word";
-    case EXPR_ERROR_UNEXPECTED_PARENTHESIS: return "Unexpected parenthesis";
-    case EXPR_ERROR_MISSING_OPERAND: return "Missing operand";
-    case EXPR_ERROR_UNKNOWN_OPERATOR: return "Unknown operator";
-    case EXPR_ERROR_STRING_LITERAL_NOT_CLOSED: return "Missing closing \" for string literal";
-    case EXPR_ERROR_EVALUATION_TIMEOUT: return "Evaluation timeout";
-    case EXPR_ERROR_EVALUATION_NOT_IMPLEMENTED: return "Evaluation not implemented";
-    case EXPR_ERROR_UNEXPECTED_SET: return "Unexpected set, i.e. {1, 2, 3}";
+        case EXPR_ERROR_ALLOCATION_FAILED: return "Allocation failed";
+        case EXPR_ERROR_UNEXPECTED_NUMBER: return "Unexpected number";
+        case EXPR_ERROR_UNEXPECTED_WORD: return "Unexpected word";
+        case EXPR_ERROR_UNEXPECTED_PARENTHESIS: return "Unexpected parenthesis";
+        case EXPR_ERROR_MISSING_OPERAND: return "Missing operand";
+        case EXPR_ERROR_UNKNOWN_OPERATOR: return "Unknown operator";
+        case EXPR_ERROR_STRING_LITERAL_NOT_CLOSED: return "Missing closing \" for string literal";
+        case EXPR_ERROR_EVALUATION_TIMEOUT: return "Evaluation timeout";
+        case EXPR_ERROR_EVALUATION_NOT_IMPLEMENTED: return "Evaluation not implemented";
+        case EXPR_ERROR_UNEXPECTED_SET: return "Unexpected set, i.e. {1, 2, 3}";
     }
 
     return "Unknown error";
@@ -1171,10 +1179,6 @@ FOUNDATION_STATIC double expr_parse_number(const char* s, size_t len)
     return (digits > 0 ? num : NAN);
 }
 
-/*
- * Functions
- */
-
 FOUNDATION_STATIC expr_func_t* expr_func(expr_func_t* funcs, const char* s, size_t len)
 {
     for (expr_func_t* f = funcs; f->name.str; f++)
@@ -1184,10 +1188,6 @@ FOUNDATION_STATIC expr_func_t* expr_func(expr_func_t* funcs, const char* s, size
     }
     return NULL;
 }
-
-/*
- * Variables
- */
 
 FOUNDATION_STATIC expr_var_t* expr_var(expr_var_list_t* vars, const char* s, size_t len)
 {
@@ -1701,10 +1701,12 @@ expr_t* expr_create(const char* s, size_t len, expr_var_list_t* vars, expr_func_
                 vec_push(&os, str);
             }
             else {
+                expr_error(EXPR_ERROR_BAD_PARENS, expr_string, tok, "Invalid parentheses");
                 goto cleanup; // Bad call
             }
         }
         else if (paren == EXPR_PAREN_EXPECTED) {
+            expr_error(EXPR_ERROR_BAD_PARENS, expr_string, tok, "Invalid parentheses");
             goto cleanup; // Bad call
         }
         else if (n == 1 && (*tok == ')' || *tok == ']'))
@@ -1732,6 +1734,7 @@ expr_t* expr_create(const char* s, size_t len, expr_var_list_t* vars, expr_func_
                 if (str.length == 1 && str.str[0] == '$') {
                     if (vec_len(&arg.args) < 1) {
                         vec_free(&arg.args);
+                        expr_error(EXPR_ERROR_INVALID_ARGUMENT, expr_string, str.str, "Too few arguments for $() function");
                         goto cleanup; /* too few arguments for $() function */
                     }
                     expr_t* u = &vec_nth(&arg.args, 0);
@@ -1894,6 +1897,7 @@ expr_t* expr_create(const char* s, size_t len, expr_var_list_t* vars, expr_func_
     {
         expr_string_t rest = vec_pop(&os);
         if (rest.length == 1 && (*rest.str == '(' || *rest.str == ')')) {
+            expr_error(EXPR_ERROR_BAD_PARENS, expr_string, nullptr, "Invalid paren %.*s", STRING_FORMAT(rest));
             goto cleanup; // Bad paren
         }
         if (expr_bind(STRING_ARGS(rest), &es) == -1) {
@@ -2017,10 +2021,11 @@ void expr_register_function(const char* name, exprfn_t fn, exprfn_cleanup_t clea
 
 bool expr_unregister_function(const char* name, exprfn_t fn /*= nullptr*/)
 {
+    const size_t name_length = string_length(name);
     for (unsigned i = 0, end = array_size(_expr_user_funcs); i < end; ++i)
     {
         expr_func_t& efn = _expr_user_funcs[i];
-        if (efn.handler == fn || string_equal_nocase(name, string_length(name), STRING_ARGS(efn.name)))
+        if (efn.handler == fn || string_equal_nocase(name, name_length, STRING_ARGS(efn.name)))
         {
             array_erase_ordered_safe(_expr_user_funcs, i);
             return true;
@@ -2189,6 +2194,7 @@ FOUNDATION_STATIC void expr_initialize()
     expr_set_global_var("LOGN2", DBL_LOGN2);
     expr_set_global_var("LOGN10", DBL_LOGN10);
     expr_set_global_var("EPSILON", DBL_EPSILON);
+    expr_set_global_var("nan", DNAN);
     expr_set_global_var("NIL", expr_result_t(nullptr));
     expr_set_global_var("true", expr_result_t(true));
     expr_set_global_var("false", expr_result_t(false));

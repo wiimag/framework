@@ -10,6 +10,16 @@
 #include <framework/expr.h>
 #include <framework/tests/test_utils.h>
 
+template<size_t N> FOUNDATION_FORCEINLINE expr_result_t test_expr_error(const char(&expr)[N], expr_error_code_t expected_error_code)
+{
+    expr_result_t result = eval(expr, N - 1);
+    CHECK_EQ(result.type, EXPR_RESULT_NULL);
+    CHECK_EQ(EXPR_ERROR_CODE, expected_error_code);
+    CHECK_GT(string_length(EXPR_ERROR_MSG), 0);
+    CAPTURE(doctest::String(EXPR_ERROR_MSG));
+    return result;
+}
+
 template<size_t N> FOUNDATION_FORCEINLINE expr_result_t test_expr(const char(&expr)[N], const std::initializer_list<double>& list)
 {
     expr_result_t result = eval(expr, N - 1);
@@ -32,8 +42,8 @@ template<size_t N> FOUNDATION_FORCEINLINE expr_result_t test_expr(const char(&ex
 
     if (math_real_is_finite(expected))
     {
-        CHECK_GE(result.value, expected - REAL_EPSILON);
-        CHECK_LE(result.value, expected + REAL_EPSILON);
+        CHECK_GE(result.value, expected - (double)FLT_EPSILON*2);
+        CHECK_LE(result.value, expected + (double)FLT_EPSILON*2);
     }
     else
     {
@@ -515,7 +525,24 @@ TEST_SUITE("Expressions")
         CHECK_EQ(eval("-false").as_boolean(), true);
         CHECK_EQ(eval("-coucou").as_string(), CTEXT("coucou"));
 
+        test_expr("null-nil", nullptr);
         test_expr("-[1, 2, 3]", {-1, -2, -3});
+    }
+
+    TEST_CASE("operator>")
+    {
+        test_expr("null>nil", false);
+        test_expr("1>1.0000", false);
+        test_expr("[1,2,3]>0", true);
+        test_expr("[1,2,3]>2", false);
+    }
+
+    TEST_CASE("operator<")
+    {
+        test_expr("null<nil", false);
+        test_expr("nil<1", false);
+        test_expr("[1,2,3]<4", true);
+        test_expr("[1,2,3]<3", false);
     }
 
     TEST_CASE("operator*")
@@ -534,6 +561,11 @@ TEST_SUITE("Expressions")
         test_expr("[12, true, -1]*4", {12*4.0, 4.0, -4.0});
         test_expr("[12, true, -1]*[4, 5, 6]", {12*4.0, 5.0, -6.0});
         test_expr("5*[12, true, -1]*[4, 5, 6, 7]", {5*12*4.0, 5*5.0, 5*-6.0});
+    }
+
+    TEST_CASE("operator/")
+    {
+        test_expr("null/nil", nullptr);
     }
 
     TEST_CASE("Basic functions")
@@ -613,6 +645,287 @@ TEST_SUITE("Expressions")
     {
         test_expr("i=0, s=0, $(inc, $1+1), while((i=inc(i))<6, s=sum(s, 1))", 5);
         test_expr("i=0, s=0, $(inc, $1+1), while((i=inc(i))<6, s=sum(s, 2))", 10);
+    }
+
+    TEST_CASE("INDEX")
+    {
+        test_expr("INDEX([1, 2, 3], 2)", 3);
+        test_expr("INDEX([1, 2, 3], 4)", nullptr);
+        test_expr("INDEX([1, 2, 3], -1)!=[1, 2, 3]", true);
+    }
+
+    TEST_CASE("MAP")
+    {
+        test_expr("MAP([1, 2, 3], MUL($1, 3))", {3, 6, 9});
+        test_expr("MAP([[a, 1], [b, 2], [c, 3]], $2) == [1, 2, 3]", true);
+        test_expr("MAP([[a, 1], [b, 2], [c, 3]], ADD($0, $2)) == [1, 3, 6]", true);
+    }
+
+    TEST_CASE("FILTER")
+    {
+        test_expr("FILTER([1, 2, 3], EVAL($1 >= 3))", {3});
+        test_expr("FILTER([2, 1, 4, 5, 0, 55, 6], $1 > 3) == [4, 5, 55, 6]", true);
+        test_expr("FILTER([[1,2], [5,4]], $1 > $2)==[5,4]", true);
+    }
+
+    TEST_CASE("EVAL")
+    {
+        test_expr("ADD(5, 5), EVAL($0 >= 10)", {10, 1.0});
+        test_expr("EVAL(ADD(1,1), SUB(1,1))", {2, 0});
+
+        static int a = 0, b = 0;
+        expr_register_function("funcA", [](const expr_func_t* f, vec_expr_t* args, void* c) -> expr_result_t
+        {
+            a = 2;
+            return NIL;
+        });
+
+        expr_register_function("funcB", [](const expr_func_t* f, vec_expr_t* args, void* c) -> expr_result_t
+        {
+            b = 2;
+            return NIL;
+        });
+
+
+        // Make sure functions are only evaluated if branched
+        test_expr("IF(false, EVAL(funcA()), EVAL(funcB()))", nullptr);
+
+        CHECK_EQ(a, 0);
+        CHECK_EQ(b, 2);
+    }
+
+    TEST_CASE("REPEAT")
+    {
+        test_expr("REPEAT(RANDOM($i+1, $count+1), 5)>0", true);
+        test_expr("SUM(REPEAT(RANDOM($i+1, $count+1), 5))>=5", true);
+    }
+
+    TEST_CASE("REDUCE")
+    {
+        test_expr("$0=0, REDUCE([1, 2, 3], ADD($0, $1))", 6);
+        test_expr("REDUCE([1, 2, 3], ADD(), 5) == 11", true);
+        test_expr("REDUCE([1, 2, 3], $0 + $1, 5) == 11", true);
+    }
+
+    TEST_CASE("SORT")
+    {
+        test_expr("SORT([2, 1, 3])", {1, 2, 3});
+        test_expr("SORT([2, 1, 3], DESC)", {3, 2, 1});
+        test_expr("SORT([33, 1.1, 0, true, 6, [2, 14]], 1, 1) == [0, true, 1.1, 6, [2, 14], 33]", true);
+        test_expr("SORT([orange, apple, zebra], ASC)==['apple', 'orange', 'zebra']", true);
+        test_expr("SORT([orange, apple, zebra], DESC)==['zebra', 'orange', 'apple']", true);
+        test_expr("SORT([[2,5,4],[5,9,1]])==[[1,5,9], [2,4,5]]", true);
+        test_expr("SORT(['COUCOU', 1])==[1, 'COUCOU']", true);
+    }
+
+    TEST_CASE("ROUND")
+    {
+        test_expr("ROUND(1/0) == 1/0", true);
+        test_expr("ROUND(1.2345) == 1.0", true);
+        test_expr("ROUND(1.2345, 2) == 1.23", true);
+        test_expr("ROUND(144.23455567, -2) == 100", true);
+    }
+
+    TEST_CASE("CEIL")
+    {
+        test_expr("CEIL(1.2345) == 2.0", true);
+        test_expr("A=CEIL(1.777), [A!=1,A==2]==true", true);
+    }
+
+    TEST_CASE("FLOOR")
+    {
+        test_expr("FLOOR(1.2345) == 1.0", true);
+    }
+
+    TEST_CASE("RANDOM & RAND")
+    {
+        test_expr("A=RANDOM(5), [A>=0, A<5]", {1.0, 1.0});
+        test_expr("A=REPEAT(RANDOM(4, 77), 5), [INDEX(A, 3)>=4, INDEX(A, 4)<77]", {1.0, 1.0});
+        test_expr("A=RAND(), [A>=0, A<1, CEIL(A), FLOOR(A)]", {1.0, 1.0, 1.0, 0.0});
+    }
+
+    TEST_CASE("NOW")
+    {
+        // 1681819278: ~04/18/2023 @ 12:01pm
+        test_expr("NOW()>1681819278", true);
+    }
+
+    TEST_CASE("DATE")
+    {
+        test_expr("DATE(2023,4,19)>=1681819278", true);
+        test_expr("DATE(2023,4,19)<DATE(2023,4,20)", true);
+    }
+
+    TEST_CASE("DATESTR")
+    {
+         test_expr("DATESTR(1681819278)=='2023-04-18'", true);
+    }
+
+    TEST_CASE("POINTER")
+    {
+        expr_register_function("ptr_0", [](const expr_func_t* f, vec_expr_t* args, void* c) -> expr_result_t 
+        { 
+            static constexpr float n[] = {0};
+            return expr_result_t((void*)&n, sizeof(n[0]), 0, EXPR_POINTER_ARRAY | EXPR_POINTER_ARRAY_FLOAT);
+        });
+
+        expr_register_function("ptr_A", [](const expr_func_t* f, vec_expr_t* args, void* c) -> expr_result_t 
+        { 
+            static constexpr float n[] = {5.66f, 8.0f};
+            return expr_result_t((void*)&n, sizeof(n[0]), ARRAY_COUNT(n), EXPR_POINTER_ARRAY | EXPR_POINTER_ARRAY_FLOAT);
+        });
+
+        expr_register_function("ptr_B", [](const expr_func_t* f, vec_expr_t* args, void* c) -> expr_result_t 
+        { 
+            static constexpr double n[] = {5.66, 8.22340, -1e3};
+            return expr_result_t((void*)&n, sizeof(n[0]), ARRAY_COUNT(n), EXPR_POINTER_ARRAY | EXPR_POINTER_ARRAY_FLOAT);
+        });
+
+        expr_register_function("ptr_u8", [](const expr_func_t* f, vec_expr_t* args, void* c) -> expr_result_t 
+        { 
+            static constexpr uint8_t n[] = {'\n', 'A'};
+            return expr_result_t((void*)&n, sizeof(n[0]), ARRAY_COUNT(n), EXPR_POINTER_ARRAY | EXPR_POINTER_ARRAY_UNSIGNED);
+        });
+
+        expr_register_function("ptr_u64", [](const expr_func_t* f, vec_expr_t* args, void* c) -> expr_result_t 
+        { 
+            static constexpr uint64_t n[] = {0, UINT64_MAX, 0ULL};
+            return expr_result_t((void*)&n, sizeof(n[0]), ARRAY_COUNT(n), EXPR_POINTER_ARRAY | EXPR_POINTER_ARRAY_UNSIGNED);
+        });
+
+         expr_register_function("ptr_i64", [](const expr_func_t* f, vec_expr_t* args, void* c) -> expr_result_t 
+        { 
+            static constexpr int64_t n[] = {INT64_MIN, INT64_MAX, 0i64};
+            return expr_result_t((void*)&n, sizeof(n[0]), ARRAY_COUNT(n), EXPR_POINTER_ARRAY | EXPR_POINTER_ARRAY_INTEGER);
+        });
+
+        string_const_t r_0 = eval("ptr_0()").as_string("%.1f"); CHECK_EQ(r_0, CTEXT("nil"));
+        string_const_t r_A = eval("ptr_A()").as_string("%.1f"); CHECK_EQ(r_A, CTEXT("[5.7, 8.0]"));
+        string_const_t r_B = eval("ptr_B()").as_string("%.3lg"); CHECK_EQ(r_B, CTEXT("[5.66, 8.22, -1e+03]"));
+        string_const_t r_u8 = eval("ptr_u8()").as_string(); CHECK_EQ(r_u8, CTEXT("[10, 65]"));
+        string_const_t r_u64 = eval("ptr_u64()").as_string(); CHECK_EQ(r_u64, CTEXT("[0, 18446744073709551615, 0]"));
+        string_const_t r_i64 = eval("ptr_i64()").as_string(); CHECK_EQ(r_i64, CTEXT("[-9223372036854775808, 9223372036854775807, 0]"));
+
+        test_expr("min(ptr_0())", nullptr);
+        test_expr("min(ptr_A())", 5.66);
+        test_expr("min(ptr_B())", -1e3);
+        test_expr("min(ptr_u8())", 10);
+        test_expr("min(ptr_u64())", 0.0);
+        test_expr("min(ptr_i64())", (double)INT64_MIN);
+
+        test_expr("max(ptr_0())", nullptr);
+        test_expr("max(ptr_A())", 8.0f);
+        test_expr("max(ptr_B())", 8.22340);
+        test_expr("max(ptr_u8())", (int)'A');
+        test_expr("max(ptr_u64())", (double)UINT64_MAX);
+        test_expr("max(ptr_i64())", (double)INT64_MAX);
+
+        test_expr("sum(ptr_0())", 0.0);
+        test_expr("sum(ptr_A())", (double)(5.66f + 8.0f));
+        test_expr("sum(ptr_B())", 5.66 + 8.22340 + -1e3);
+        test_expr("sum(ptr_u8())", 75);
+        test_expr("sum(ptr_u64())", (double)UINT64_MAX);
+        test_expr("sum(ptr_i64())", 0.0);
+
+        test_expr("count(ptr_0())", 0);
+        test_expr("count(ptr_A())", 2);
+        test_expr("count(ptr_B())", 3);
+        test_expr("count(ptr_u8())", 2);
+        test_expr("count(ptr_u64())", 3);
+        test_expr("count(ptr_i64(), [1,2,3])", 6);
+    }
+
+    TEST_CASE("Invalid syntax")
+    {
+        expr_unregister_function("nop");
+        expr_register_function("nop", [](const expr_func_t* f, vec_expr_t* args, void* c) -> expr_result_t { return NIL; });
+
+        test_expr_error("(", EXPR_ERROR_BAD_PARENS);
+        test_expr_error(")", EXPR_ERROR_UNEXPECTED_PARENTHESIS);
+        test_expr_error("()3", EXPR_ERROR_UNEXPECTED_NUMBER);
+        test_expr_error("()x", EXPR_ERROR_UNEXPECTED_WORD);
+        test_expr_error("0^+1", EXPR_ERROR_MISSING_OPERAND);
+        test_expr_error("()\\", EXPR_ERROR_UNEXPECTED_WORD);
+        test_expr_error("().", EXPR_ERROR_UNKNOWN_OPERATOR);
+        test_expr_error("4ever", EXPR_ERROR_UNEXPECTED_WORD);
+        test_expr_error("(2+3", EXPR_ERROR_BAD_PARENS);
+        test_expr_error("(-2", EXPR_ERROR_BAD_PARENS);
+        test_expr_error("*2", EXPR_ERROR_MISSING_OPERAND);
+        test_expr_error("nop=", EXPR_ERROR_BAD_PARENS);
+        test_expr_error("nop(", EXPR_ERROR_BAD_PARENS);
+        test_expr_error("unknownfunc()", EXPR_ERROR_INVALID_FUNCTION_NAME);
+        test_expr_error("$(recurse, recurse()), recurse()", EXPR_ERROR_INVALID_FUNCTION_NAME);
+        test_expr_error("),", EXPR_ERROR_UNEXPECTED_PARENTHESIS);
+        test_expr_error("+(", EXPR_ERROR_MISSING_OPERAND);
+        test_expr_error("2=3", EXPR_ERROR_BAD_PARENS); // FIXME: Should we have a better error code for this?
+        //test_expr_error("2.3.4", EXPR_ERROR_INVALID_ARGUMENT);
+        test_expr_error("1()", EXPR_ERROR_UNEXPECTED_PARENTHESIS);
+        test_expr_error("x()", EXPR_ERROR_INVALID_FUNCTION_NAME);
+        test_expr_error(",", EXPR_ERROR_MISSING_OPERAND);
+        test_expr_error("1,,2", EXPR_ERROR_MISSING_OPERAND);
+        test_expr_error("nop(,x)", EXPR_ERROR_MISSING_OPERAND);
+        test_expr_error("nop(x=)>1", EXPR_ERROR_UNEXPECTED_PARENTHESIS);
+        test_expr_error("1 x", EXPR_ERROR_UNEXPECTED_WORD);
+        test_expr_error("1++", EXPR_ERROR_MISSING_OPERAND);
+        test_expr_error("foo((x))", EXPR_ERROR_INVALID_FUNCTION_NAME);
+        test_expr_error("nop(x))", EXPR_ERROR_BAD_PARENS);
+        test_expr_error("nop((x)", EXPR_ERROR_BAD_PARENS);
+        test_expr_error("$($())", EXPR_ERROR_INVALID_ARGUMENT);
+        test_expr_error("$(1)", EXPR_ERROR_INVALID_ARGUMENT);
+        test_expr_error("$()", EXPR_ERROR_INVALID_ARGUMENT);
+        test_expr_error("[1 2 3]", EXPR_ERROR_UNEXPECTED_NUMBER);
+        test_expr_error("[1, 2, 3,,]", EXPR_ERROR_MISSING_OPERAND);
+        test_expr_error("[1, 2, 3", EXPR_ERROR_BAD_PARENS);
+        test_expr_error("[1, 2, 3]]", EXPR_ERROR_BAD_PARENS);
+
+        test_expr_error("SORT()", EXPR_ERROR_INVALID_ARGUMENT);
+        test_expr_error("SORT(1, ASC)", EXPR_ERROR_INVALID_ARGUMENT);
+        test_expr_error("REDUCE()", EXPR_ERROR_INVALID_ARGUMENT);
+        test_expr_error("REDUCE(1, 1)", EXPR_ERROR_INVALID_ARGUMENT);
+        test_expr_error("FILTER()", EXPR_ERROR_INVALID_ARGUMENT);
+        test_expr_error("FILTER(1, 1)", EXPR_ERROR_INVALID_ARGUMENT);
+        test_expr_error("INDEX(1, 1)", EXPR_ERROR_INVALID_ARGUMENT);
+        test_expr_error("INDEX([0, 1], nan)", EXPR_ERROR_INVALID_ARGUMENT);
+        test_expr_error("MAP()", EXPR_ERROR_INVALID_ARGUMENT);
+        test_expr_error("MAP(1, 1)", EXPR_ERROR_INVALID_ARGUMENT);
+        test_expr_error("REPEAT()", EXPR_ERROR_INVALID_ARGUMENT);
+        test_expr_error("REPEAT(1,1,1,1,1)", EXPR_ERROR_INVALID_ARGUMENT);
+        test_expr_error("round()", EXPR_ERROR_INVALID_ARGUMENT);
+        test_expr_error("round(1,1,1,1,1)", EXPR_ERROR_INVALID_ARGUMENT);
+        test_expr_error("EVAL()", EXPR_ERROR_INVALID_ARGUMENT);
+        test_expr_error("DATESTR()", EXPR_ERROR_INVALID_ARGUMENT);
+        test_expr_error("RANDOM(1,2,3,4)", EXPR_ERROR_INVALID_ARGUMENT);
+
+        CHECK(expr_unregister_function("nop"));
+    }
+
+    TEST_CASE("Custom functions")
+    {
+        expr_register_function("zzlowercase", [](const expr_func_t* f, vec_expr_t* args, void* c) -> expr_result_t 
+        { 
+            if (args->len != 1)
+                throw ExprError(EXPR_ERROR_INVALID_ARGUMENT);
+
+            expr_t* arg1 = args->get(0);
+            if (arg1->type != OP_CONST && arg1->type != OP_VAR)
+                throw ExprError(EXPR_ERROR_INVALID_TOKEN);
+
+            expr_result_t argvalue = expr_eval(arg1);
+            if (argvalue.type != EXPR_RESULT_SYMBOL)
+                throw ExprError(EXPR_ERROR_BAD_VARIABLE_NAME);
+
+            string_const_t str = argvalue.as_string();
+
+            char lowercase_buffer[32];
+            string_t lowercase = string_to_lower_utf8(STRING_BUFFER(lowercase_buffer), STRING_ARGS(str));
+            return expr_result_t(string_to_const(lowercase)); 
+        });
+
+        test_expr_error("zzlowercase()", EXPR_ERROR_INVALID_ARGUMENT);
+        test_expr_error("zzlowercase(add(1,1))", EXPR_ERROR_INVALID_TOKEN);
+        test_expr_error("zzlowercase(22)", EXPR_ERROR_BAD_VARIABLE_NAME);
+        test_expr("zzlowercase(COUCOU)=='coucou'", true);
+        CHECK_EQ(eval("zzlowercase('')").as_boolean(), false);
     }
 }
 
