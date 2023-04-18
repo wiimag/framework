@@ -180,8 +180,10 @@ string_const_t expr_result_t::as_string(const char* fmt /*= nullptr*/) const
     if (type == EXPR_RESULT_ARRAY)
     {
         string_const_t list_sep = array_size(list) > 8 ? CTEXT(",\n\t ") : CTEXT(", ");
-        return string_join(list, [fmt](const expr_result_t& e) { return e.as_string(fmt); },
-            list_sep, CTEXT("["), CTEXT("]"));
+        return string_join(list, [fmt](const expr_result_t& e) 
+        { 
+            return e.as_string(fmt); 
+        }, list_sep, CTEXT("["), CTEXT("]"));
     }
 
     if (type == EXPR_RESULT_POINTER)
@@ -213,7 +215,7 @@ string_const_t expr_result_t::as_string(const char* fmt /*= nullptr*/) const
                 else if (element_size == 8) return expr_result_string_join<int64_t>(*this, "%lld");
             }
         }
-        return string_format_static(STRING_CONST("0x%p (%d [%d])"), ptr, this->element_count(), this->element_size());
+        return string_format_static(STRING_CONST("0x%p (%d [%d])"), ptr, element_count, this->element_size());
     }
 
     return string_null();
@@ -547,9 +549,8 @@ FOUNDATION_STATIC expr_result_t expr_eval_math_sum(const expr_result_t* list)
 
 FOUNDATION_STATIC expr_result_t expr_eval_math_avg(const expr_result_t* list)
 {
-    if (list == nullptr)
-        return NIL;
-
+    FOUNDATION_ASSERT(list);
+    
     expr_result_t sum;
     size_t element_count = 0;
     for (size_t i = 0; i < array_size(list); ++i)
@@ -573,8 +574,7 @@ FOUNDATION_STATIC expr_result_t expr_eval_math_avg(const expr_result_t* list)
 
 FOUNDATION_STATIC expr_result_t expr_eval_math_count(const expr_result_t* list)
 {
-    if (list == nullptr)
-        return NIL;
+    FOUNDATION_ASSERT(list);
 
     expr_result_t element_count(0.0);
     for (size_t i = 0; i < array_size(list); ++i)
@@ -594,15 +594,14 @@ FOUNDATION_STATIC expr_result_t expr_eval_math_count(const expr_result_t* list)
 
 FOUNDATION_STATIC const expr_result_t* expr_eval_expand_args(vec_expr_t* args)
 {
-    if (args == nullptr)
-        return nullptr;
+    FOUNDATION_ASSERT(args);
 
     int arg_index = 0;
     expr_result_t* list = nullptr;
     if (args->len == 1 && (args->buf[arg_index].type == OP_SET || args->buf[arg_index].type == OP_FUNC))
     {
         expr_result_t fexpr = expr_eval(&args->buf[arg_index++]);
-        if (fexpr.is_set())
+        if (fexpr.type == EXPR_RESULT_ARRAY)
             return fexpr.list;
         array_push(list, fexpr);
     }
@@ -618,7 +617,7 @@ FOUNDATION_STATIC const expr_result_t* expr_eval_expand_args(vec_expr_t* args)
 
 FOUNDATION_STATIC expr_result_t expr_eval_math_min(const expr_func_t* f, vec_expr_t* args, void* c)
 {
-    if (args == nullptr)
+    if (args == nullptr || args->len == 0)
         return NIL;
 
     return expr_eval_math_min(expr_eval_expand_args(args));
@@ -626,7 +625,7 @@ FOUNDATION_STATIC expr_result_t expr_eval_math_min(const expr_func_t* f, vec_exp
 
 FOUNDATION_STATIC expr_result_t expr_eval_math_max(const expr_func_t* f, vec_expr_t* args, void* c)
 {
-    if (args == nullptr)
+    if (args == nullptr || args->len == 0)
         return NIL;
 
     return expr_eval_math_max(expr_eval_expand_args(args));
@@ -634,7 +633,7 @@ FOUNDATION_STATIC expr_result_t expr_eval_math_max(const expr_func_t* f, vec_exp
 
 FOUNDATION_STATIC expr_result_t expr_eval_math_sum(const expr_func_t* f, vec_expr_t* args, void* c)
 {
-    if (args == nullptr)
+    if (args == nullptr || args->len == 0)
         return NIL;
 
     return expr_eval_math_sum(expr_eval_expand_args(args));
@@ -642,7 +641,7 @@ FOUNDATION_STATIC expr_result_t expr_eval_math_sum(const expr_func_t* f, vec_exp
 
 FOUNDATION_STATIC expr_result_t expr_eval_math_avg(const expr_func_t* f, vec_expr_t* args, void* c)
 {
-    if (args == nullptr)
+    if (args == nullptr || args->len == 0)
         return NIL;
 
     return expr_eval_math_avg(expr_eval_expand_args(args));
@@ -650,7 +649,7 @@ FOUNDATION_STATIC expr_result_t expr_eval_math_avg(const expr_func_t* f, vec_exp
 
 FOUNDATION_STATIC expr_result_t expr_eval_math_count(const expr_func_t* f, vec_expr_t* args, void* c)
 {
-    if (args == nullptr)
+    if (args == nullptr || args->len == 0)
         return NIL;
 
     return expr_eval_math_count(expr_eval_expand_args(args));
@@ -1185,10 +1184,7 @@ FOUNDATION_STATIC expr_var_t* expr_var(expr_var_list_t* vars, const char* s, siz
 
 expr_result_t expr_eval_var(expr_t* e)
 {
-    const expr_result_t r = *e->param.var.value;
-    if (r.is_null())
-        log_debugf(HASH_EXPR, STRING_CONST("var '%.*s' is not defined"), STRING_FORMAT(e->token));
-    return r;
+    return *e->param.var.value;
 }
 
 expr_result_t expr_eval(expr_t* e)
@@ -1258,25 +1254,30 @@ expr_result_t expr_eval(expr_t* e)
 
     case OP_LOGICAL_AND:
         n = expr_eval(&e->args.buf[0]);
-        if (!n.is_null()) {
-            n = expr_eval(&e->args.buf[1]);
-            if (!n.is_null()) {
-                return expr_result_t(true);
-            }
-        }
+        if (!n)
+            return expr_result_t(false);
+        n = expr_eval(&e->args.buf[1]);
+        if (!n)
+            return expr_result_t(false);
+
+        if (n.type == EXPR_RESULT_NUMBER && n.as_number() != 0.0)
+            return n;
         return expr_result_t(false);
 
     case OP_LOGICAL_OR:
         n = expr_eval(&e->args.buf[0]);
-        if (!n.is_null()) {
+        if (n) {
+            if (n.type == EXPR_RESULT_NUMBER)
+                return n;
             return expr_result_t(true);
         }
-        else {
-            n = expr_eval(&e->args.buf[1]);
-            if (!n.is_null()) {
-                return expr_result_t(true);
-            }
+        n = expr_eval(&e->args.buf[1]);
+        if (n) {
+            if (n.type == EXPR_RESULT_NUMBER)
+                return n;
+            return expr_result_t(true);
         }
+
         return expr_result_t(false);
 
     case OP_ASSIGN:
@@ -1319,16 +1320,18 @@ expr_result_t expr_eval(expr_t* e)
 FOUNDATION_STATIC int expr_next_token(const char* s, size_t len, int& flags)
 {
     unsigned int i = 0;
-    if (len == 0) {
+    if (len == 0)
         return 0;
-    }
+
     char c = s[0];
-    if (c == '#') {
+    if (c == '#') 
+    {
         for (; i < len && s[i] != '\n'; i++)
             ;
         return i;
     }
-    else if (c == '\n') {
+    else if (c == '\n') 
+    {
         for (; i < len && isspace(s[i]); i++)
             ;
         if (flags & EXPR_TOP) {
@@ -1506,6 +1509,7 @@ FOUNDATION_STATIC inline void expr_copy(expr_t* dst, expr_t* src)
     dst->type = src->type;
     if (src->type == OP_FUNC) {
         dst->param.func.f = src->param.func.f;
+        dst->param.func.context = nullptr;
         vec_foreach(&src->args, arg, i) {
             expr_t tmp = expr_init(OP_UNKNOWN);
             expr_copy(&tmp, &arg);
@@ -1721,23 +1725,27 @@ expr_t* expr_create(const char* s, size_t len, expr_var_list_t* vars, expr_func_
                         expr_t root = expr_const(EXPR_ZERO);
                         expr_t* p = &root;
                         /* Assign macro parameters */
-                        for (int j = 0; j < vec_len(&arg.args); j++) {
+                        for (int j = 0; j < vec_len(&arg.args); j++) 
+                        {
                             char varname[4];
                             string_format(STRING_BUFFER(varname), STRING_CONST("$%d"), (j + 1));
                             expr_var_t* vv = expr_var(vars, varname, string_length(varname));
                             expr_t ev = expr_varref(vv);
-                            expr_t assign =
-                                expr_binary(OP_ASSIGN, ev, vec_nth(&arg.args, j));
+                            expr_t assign = expr_binary(OP_ASSIGN, ev, vec_nth(&arg.args, j));
                             *p = expr_binary(OP_COMMA, assign, expr_const(EXPR_ZERO));
                             p = &vec_nth(&p->args, 1);
                         }
+
                         /* Expand macro body */
-                        for (int j = 1; j < vec_len(&m.body); j++) {
-                            if (j < vec_len(&m.body) - 1) {
+                        for (int j = 1; j < vec_len(&m.body); j++) 
+                        {
+                            if (j < vec_len(&m.body) - 1) 
+                            {
                                 *p = expr_binary(OP_COMMA, expr_const(EXPR_ZERO), expr_const(EXPR_ZERO));
                                 expr_copy(&vec_nth(&p->args, 0), &vec_nth(&m.body, j));
                             }
-                            else {
+                            else 
+                            {
                                 expr_copy(p, &vec_nth(&m.body, j));
                             }
                             p = &vec_nth(&p->args, 1);
@@ -1751,18 +1759,19 @@ expr_t* expr_create(const char* s, size_t len, expr_var_list_t* vars, expr_func_
                         bound_set.args = arg.args;
                         vec_push(&es, bound_set);
                     }
-                    else {
+                    else 
+                    {
                         expr_func_t* f = expr_func(funcs, STRING_ARGS(str));
                         expr_t bound_func = expr_init(OP_FUNC);
                         bound_func.param.func.f = f;
+                        bound_func.param.func.context = nullptr;
                         bound_func.args = arg.args;
                         bound_func.token = {str.str, (tok - str.str) + 1ULL };
                         if (f->ctxsz > 0)
                         {
                             void* p = memory_allocate(HASH_EXPR, f->ctxsz, 8, MEMORY_PERSISTENT | MEMORY_ZERO_INITIALIZED);
-                            if (p == NULL) {
+                            if (p == NULL)
                                 goto cleanup; /* allocation failed */
-                            }
                             bound_func.param.func.context = p;
                         }
                         vec_push(&es, bound_func);
@@ -1780,11 +1789,15 @@ expr_t* expr_create(const char* s, size_t len, expr_var_list_t* vars, expr_func_
         {
             const expr_type_t op = expr_op(tok, n, -1);
             expr_string_t o2 = { NULL, 0 };
-            if (vec_len(&os) > 0) {
+            if (vec_len(&os) > 0) 
+            {
                 o2 = vec_peek(&os);
             }
-            for (;;) {
-                if (n == 1 && *tok == ',' && vec_len(&os) > 0) {
+
+            for (;;) 
+            {
+                if (n == 1 && *tok == ',' && vec_len(&os) > 0) 
+                {
                     expr_string_t str = vec_peek(&os);
                     if (str.length == 1 && *str.str == '{')
                     {
@@ -1794,31 +1807,37 @@ expr_t* expr_create(const char* s, size_t len, expr_var_list_t* vars, expr_func_
                     }
                 }
                 const expr_type_t type2 = expr_op(STRING_ARGS(o2), -1);
-                if (!(type2 != OP_UNKNOWN && expr_prec(op, type2))) {
+                if (!(type2 != OP_UNKNOWN && expr_prec(op, type2))) 
+                {
                     expr_string_t str = { tok, (size_t)n };
                     vec_push(&os, str);
                     break;
                 }
 
-                if (expr_bind(STRING_ARGS(o2), &es) == -1) {
+                if (expr_bind(STRING_ARGS(o2), &es) == -1)
                     goto cleanup;
-                }
+
                 (void)vec_pop(&os);
-                if (vec_len(&os) > 0) {
+                if (vec_len(&os) > 0) 
+                {
                     o2 = vec_peek(&os);
                 }
-                else {
+                else 
+                {
                     o2.length = 0;
                 }
             }
         }
-        else {
-            if (n > 0 && !isdigit(*tok)) {
+        else 
+        {
+            if (n > 0 && !isdigit(*tok)) 
+            {
                 /* Valid identifier, a variable or a function */
                 id = tok;
                 idn = n;
             }
-            else {
+            else 
+            {
                 expr_error(EXPR_ERROR_BAD_VARIABLE_NAME, expr_string, tok, "Bad variable name %.*s", n, tok);
                 goto cleanup; // Bad variable name, e.g. '2.3.4' or '4ever'
             }
@@ -1830,7 +1849,8 @@ expr_t* expr_create(const char* s, size_t len, expr_var_list_t* vars, expr_func_
         vec_push(&es, expr_varref(expr_var(vars, id, idn)));
     }
 
-    while (vec_len(&os) > 0) {
+    while (vec_len(&os) > 0) 
+    {
         expr_string_t rest = vec_pop(&os);
         if (rest.length == 1 && (*rest.str == '(' || *rest.str == ')')) {
             goto cleanup; // Bad paren
@@ -1845,6 +1865,7 @@ expr_t* expr_create(const char* s, size_t len, expr_var_list_t* vars, expr_func_
     if (result != NULL) {
         if (vec_len(&es) == 0) {
             result->type = OP_CONST;
+            result->param.result.value = expr_result_t(nullptr);
         }
         else {
             *result = vec_pop(&es);
@@ -1873,7 +1894,6 @@ cleanup:
     }
     vec_free(&as);
 
-    /*vec_foreach(&os, o, i) {vec_free(&m.body);}*/
     vec_free(&os);
     return result;
 }
@@ -2036,6 +2056,13 @@ bool expr_set_global_var(const char* name, size_t name_length, const char* str, 
     return true;
 }
 
+bool expr_set_global_var(const char* name, const expr_result_t& value)
+{
+    expr_var_t* v = expr_get_or_create_global_var(name, string_length(name));
+    v->value = value;
+    return true;
+}
+
 void expr_log_evaluation_result(string_const_t expression_string, const expr_result_t& result)
 {
     if (result.type == EXPR_RESULT_ARRAY && result.element_count() > 1 && result.list[0].type == EXPR_RESULT_POINTER)
@@ -2123,8 +2150,13 @@ FOUNDATION_STATIC void expr_initialize()
     expr_set_global_var("E", DBL_E);
     expr_set_global_var("LOGN2", DBL_LOGN2);
     expr_set_global_var("LOGN10", DBL_LOGN10);
+    expr_set_global_var("EPSILON", DBL_EPSILON);
+    expr_set_global_var("NIL", expr_result_t(nullptr));
+    expr_set_global_var("true", expr_result_t(true));
+    expr_set_global_var("false", expr_result_t(false));
 
     string_const_t eval_expression;
+    // TODO: Add a way for module to register startup command line arguments
     if (environment_argument("eval", &eval_expression))
     {
         static string_t command_line_eval_expression = string_clone(STRING_ARGS(eval_expression));
