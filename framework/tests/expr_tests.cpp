@@ -596,6 +596,24 @@ TEST_SUITE("Expressions")
         CHECK_EQ(eval("count(1, 2, 3, 4, 5)").as_number(), 5.0);
         CHECK_EQ(eval("count(large_numbers(), 2, 3, 4, 5, 6, 7, 8, 9, 10)").as_number(), 19);
     }
+
+    TEST_CASE("IF")
+    {
+        expr_register_function("func", [](const expr_func_t* f, vec_expr_t* args, void* c) -> expr_result_t 
+        { 
+            return expr_result_t(6.0);
+        });
+
+        test_expr("if(func()>5, true, false)", true);
+        test_expr("if(func()<5, true)", nullptr);
+        test_expr("if(func()<5, true, add(1, 2))", 3.0);
+    }
+
+    TEST_CASE("WHILE")
+    {
+        test_expr("i=0, s=0, $(inc, $1+1), while((i=inc(i))<6, s=sum(s, 1))", 5);
+        test_expr("i=0, s=0, $(inc, $1+1), while((i=inc(i))<6, s=sum(s, 2))", 10);
+    }
 }
 
 #endif // BUILD_DEVELOPMENT

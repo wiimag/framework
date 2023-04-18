@@ -693,6 +693,47 @@ FOUNDATION_STATIC expr_result_t expr_eval_random(const expr_func_t* f, vec_expr_
     return random_range(expr_eval(&args->buf[0]).as_number(), expr_eval(&args->buf[1]).as_number());
 }
 
+FOUNDATION_STATIC bool expr_set_global_var(const char* name, const expr_result_t& value)
+{
+    expr_var_t* v = expr_get_or_create_global_var(name, string_length(name));
+    v->value = value;
+    return true;
+}
+
+FOUNDATION_STATIC expr_result_t expr_eval_while(const expr_func_t* f, vec_expr_t* args, void* c)
+{
+    if (args->len != 2)
+        throw ExprError(EXPR_ERROR_INVALID_ARGUMENT, "Invalid arguments");
+
+    expr_set_global_var("$0", expr_result_t(0.0));
+
+    expr_result_t result = NIL;
+    expr_result_t condition = expr_eval(args->get(0));
+    while (condition)
+    {
+        result = expr_eval(args->get(1));
+        expr_set_global_var("$0", result);
+
+        condition = expr_eval(args->get(0));
+    }
+
+    return result;
+}
+
+FOUNDATION_STATIC expr_result_t expr_eval_if(const expr_func_t* f, vec_expr_t* args, void* c)
+{
+    if (args->len < 2 || args->len > 3)
+        throw ExprError(EXPR_ERROR_INVALID_ARGUMENT, "Invalid arguments");
+
+    expr_result_t condition = expr_eval(args->get(0));
+    if (condition)
+        return expr_eval(args->get(1));
+
+    if (args->len == 2)
+        return NIL;
+    return expr_eval(args->get(2));
+}
+
 FOUNDATION_STATIC void expr_array_sort(expr_result_t* elements, bool (*comparer)(const expr_result_t& a, const expr_result_t& b, bool ascending, size_t vindex), bool ascending, size_t vindex)
 {
     if (elements == nullptr)
@@ -2056,13 +2097,6 @@ bool expr_set_global_var(const char* name, size_t name_length, const char* str, 
     return true;
 }
 
-bool expr_set_global_var(const char* name, const expr_result_t& value)
-{
-    expr_var_t* v = expr_get_or_create_global_var(name, string_length(name));
-    v->value = value;
-    return true;
-}
-
 void expr_log_evaluation_result(string_const_t expression_string, const expr_result_t& result)
 {
     if (result.type == EXPR_RESULT_ARRAY && result.element_count() > 1 && result.list[0].type == EXPR_RESULT_POINTER)
@@ -2130,6 +2164,10 @@ FOUNDATION_STATIC void expr_initialize()
     array_push(_expr_user_funcs, (expr_func_t{ STRING_CONST("FLOOR"), expr_eval_floor, NULL, 0 }));
     array_push(_expr_user_funcs, (expr_func_t{ STRING_CONST("RANDOM"), expr_eval_random, NULL, 0 }));
     array_push(_expr_user_funcs, (expr_func_t{ STRING_CONST("RAND"), expr_eval_random, NULL, 0 }));
+
+    // Flow functions
+    array_push(_expr_user_funcs, (expr_func_t{ STRING_CONST("IF"), expr_eval_if, NULL, 0 }));
+    array_push(_expr_user_funcs, (expr_func_t{ STRING_CONST("WHILE"), expr_eval_while, NULL, 0 }));
 
     // Vectors and matrices functions
     expr_register_vec_mat_functions(_expr_user_funcs);
