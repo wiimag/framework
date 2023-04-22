@@ -23,6 +23,13 @@
 
 static thread_local ImRect _table_last_cell_rect;
 
+struct table_column_header_render_args_t
+{
+    table_t* table{ nullptr };
+    column_t* column{ nullptr };
+    int column_index{ -1 };
+};
+
 FOUNDATION_FORCEINLINE bool format_is_numeric(column_format_t format)
 {
     return (format == COLUMN_FORMAT_NUMBER || format == COLUMN_FORMAT_CURRENCY || format == COLUMN_FORMAT_PERCENTAGE);
@@ -190,7 +197,7 @@ void table_cell_middle_aligned_label(const char* label, size_t label_length)
 
 void table_cell_right_aligned_label(const char* label, size_t label_length, const char* url /*= nullptr*/, size_t url_length /*= 0*/, float offset /*= 0.0f*/)
 {
-    const char* end_label = label_length > 0 ? label + label_length : label + strlen(label);
+    const char* end_label = label_length > 0 ? label + label_length : label + string_length(label);
     const char* text_display_end = label;
     while (text_display_end < end_label && *text_display_end != '\0' &&
         (text_display_end[0] != '|' || text_display_end[1] != '|'))
@@ -204,6 +211,21 @@ void table_cell_right_aligned_label(const char* label, size_t label_length, cons
         ImGui::TextURL(label, text_display_end, url, url_length);
     else
         ImGui::TextUnformatted(label, text_display_end);
+    if (ImGui::IsItemHovered() && tx > ImGui::GetColumnWidth() * 1.05f)
+        ImGui::SetTooltip(" %.*s ", (int)label_length, label);
+}
+
+void table_cell_left_aligned_column_label(const char* label, void* payload)
+{
+    const size_t label_length = string_length(label);
+    const char* end_label = label_length > 0 ? label + label_length : label + string_length(label);
+    const char* text_display_end = label;
+    while (text_display_end < end_label && *text_display_end != '\0' &&
+        (text_display_end[0] != '|' || text_display_end[1] != '|'))
+        text_display_end++;
+
+    auto tx = ImGui::CalcTextSize(label, text_display_end).x;
+    ImGui::TextUnformatted(label, text_display_end);
     if (ImGui::IsItemHovered() && tx > ImGui::GetColumnWidth() * 1.05f)
         ImGui::SetTooltip(" %.*s ", (int)label_length, label);
 }
@@ -356,11 +378,38 @@ FOUNDATION_STATIC column_t* table_column_at(table_t* table, size_t column_at)
     return nullptr;
 }
 
+FOUNDATION_STATIC void table_render_column_header(const char* label, void* payload)
+{
+    FOUNDATION_ASSERT(payload);
+    table_column_header_render_args_t* args = (table_column_header_render_args_t*)payload;
+    
+    table_t* table = args->table;
+    FOUNDATION_ASSERT(table);
+
+    const column_t* column = args->column;
+    FOUNDATION_ASSERT(column);
+
+    ImGui::BeginGroup();
+    if (column->header_render)    
+        column->header_render(table, column, args->column_index);
+    else if (format_is_numeric(column->format))
+        table_cell_right_aligned_column_label(label, nullptr);
+    else if (column->flags & COLUMN_RIGHT_ALIGN)
+        table_cell_right_aligned_column_label(label, nullptr);
+    else if (column->flags & COLUMN_CENTER_ALIGN)
+        table_cell_middle_aligned_column_label(label, nullptr);
+    else
+        table_cell_left_aligned_column_label(label, nullptr);
+    ImGui::EndGroup();
+}
+
 FOUNDATION_STATIC void table_render_columns(table_t* table, int column_count)
 {
     int column_index = 0;
     bool dragging_columns = ImGui::IsMouseDragging(ImGuiMouseButton_Left, -5.0f);
-    const size_t max_column_count = sizeof(table->columns) / sizeof(table->columns[0]);
+    constexpr const size_t max_column_count = sizeof(table->columns) / sizeof(table->columns[0]);
+
+    table_column_header_render_args_t column_headers_args[max_column_count];
     for (int i = 0; i < max_column_count; ++i)
     {
         column_t& column = table->columns[i];
@@ -398,19 +447,13 @@ FOUNDATION_STATIC void table_render_columns(table_t* table, int column_count)
             table_column_flags |= ImGuiTableColumnFlags_WidthFixed;
         }
 
-        ImGuiTableColumnRenderHandler column_renderer = nullptr;
-        if (format_is_numeric(column.format))
-            column_renderer = table_cell_right_aligned_column_label;
-
-        if (column.flags & COLUMN_LEFT_ALIGN)
-            column_renderer = nullptr;
-        else if (column.flags & COLUMN_RIGHT_ALIGN)
-            column_renderer = table_cell_right_aligned_column_label;
-        else if (column.flags & COLUMN_CENTER_ALIGN)
-            column_renderer = table_cell_middle_aligned_column_label;
-
+        table_column_header_render_args_t* args = &column_headers_args[column_index];
+        args->table = table;
+        args->column = &column;
+        args->column_index = column_index;
         string_const_t column_name = string_table_decode_const(column.name);
-        ImGui::TableSetupColumn(column_name.str, table_column_flags, column.width, 0U, column_renderer, nullptr);
+        ImGui::TableSetupColumn(column_name.str, table_column_flags, column.width, 
+            0U, table_render_column_header, args);
 
         column_index++;
     }
@@ -783,7 +826,7 @@ FOUNDATION_STATIC void table_render_row_element(table_t* table, int element_inde
             ImGui::PopStyleColor();
 
         // Handle tooltip
-        if (ImGui::IsItemHovered()/* && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)*/)
+        if (ImGui::IsItemHovered())
         {
             if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
             {
@@ -882,6 +925,8 @@ FOUNDATION_STATIC void table_render_elements(table_t* table, int column_count)
 {
     //TIME_TRACKER(0.008, "Render table %.*s", STRING_FORMAT(table->name));
 
+    ImGuiTable* imtable = ImGui::GetCurrentTable();
+
     ImGuiListClipper clipper;
     clipper.Begin(table->rows_visible_count, table->row_fixed_height);
     while (clipper.Step())
@@ -921,6 +966,12 @@ FOUNDATION_STATIC void table_render_elements(table_t* table, int column_count)
             {
                 ImGui::BeginGroup();
                 table->context_menu(nullptr, nullptr, nullptr);
+
+                if (imtable)
+                {
+                    ImGui::Separator();
+                    ImGui::TableDrawContextMenu(imtable);
+                }
                 ImGui::EndGroup();
                 ImGui::EndPopup();
             }

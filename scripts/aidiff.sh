@@ -59,7 +59,6 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-
 # Define a set of colors if NO_COLOR is not set
 if [ $NO_COLOR -eq 0 ]; then
   bold=$(tput bold)
@@ -93,6 +92,12 @@ else
   italic=''
   underline=''
   reset=''
+fi
+
+# Check if OPENAI_API_KEY is set
+if [ -z "$OPENAI_API_KEY" ]; then
+  echo -e "${red}The OPENAI_API_KEY environment variable is not set${nc}"
+  exit 1
 fi
 
 # Set the revision to use
@@ -173,11 +178,23 @@ HEADER_JSON="Content-Type: application/json"
 HEADER_AUTHORIZATION="Authorization: Bearer $OPENAI_API_KEY"
 
 # Define the diff arguments
-DIFF_ARGUMENTS=(--unified=0 --minimal --no-color -b -w --ignore-blank-lines)
+DIFF_ARGUMENTS=(--unified=2 --minimal --no-color -b -w --ignore-blank-lines)
 
 # For each file get the diff and pass it to OpenAI
 for MODIFIED_FILE in "${MODIFIED_FILES_ARRAY[@]}"
 do
+
+    # Skip *.md files
+    if [[ $MODIFIED_FILE == *.md ]]; then
+        echo -e "${bold}Skipping markdown file:${normal} $MODIFIED_FILE"
+        continue
+    fi
+
+    # Skip *.json files
+    if [[ $MODIFIED_FILE == *.*json ]]; then
+        echo -e "${bold}Skipping json file:${normal} $MODIFIED_FILE"
+        continue
+    fi
 
     # Run command to check if the file is binary or text.
     # If the file is binary then skip it
