@@ -14,6 +14,7 @@
 
 #include <foundation/path.h>
 #include <foundation/library.h>
+#include <foundation/exception.h>
 #include <foundation/environment.h>
 
 #define HASH_PLUGIN static_hash_string("plugin", 6, 0xcbbfaea91dab646ULL)
@@ -44,6 +45,37 @@ FOUNDATION_FORCEINLINE plugin_t* plugin_resolve(plugin_handle_t handle)
     return &_plugins[handle.index];
 }
 
+template<typename Handler>
+FOUNDATION_FORCEINLINE void plugin_invoke_callback(plugin_t* plugin, const char* name, size_t length, Handler* handler, void* user_data = nullptr)
+{
+    app_callback_t<Handler> cb;
+    cb.handler = handler;
+    cb.user_data = user_data;
+    cb.context = plugin;
+    exception_try([](void* context)
+    {
+        auto* cb = (app_callback_t<Handler>*)context;
+
+        if constexpr (std::is_same_v<decltype(cb->handler), void (*)()>)
+        {
+            cb->handler();
+        }
+        else
+        {
+            cb->handler(cb->user_data);
+        }
+        return 0;
+    }, &cb, [](void* context, const char* file, size_t length)
+    {
+        auto* cb = (app_callback_t<Handler>*)context;
+        plugin_t* plugin = (plugin_t*)cb->context;
+        if (plugin)
+            log_errorf(plugin->context.context, ERROR_EXCEPTION, STRING_CONST("Exception in %s plugin (%.*s)"), plugin->context.name, (int)length, file);
+        else
+            log_errorf(HASH_PLUGIN, ERROR_EXCEPTION, STRING_CONST("Exception in plugin (%.*s)"), (int)length, file);
+    }, name, length);
+}
+
 FOUNDATION_STATIC void app_initialize_apis(const api_plugin_context_t* context, api_interface_t** api)
 {
     FOUNDATION_ASSERT(api);
@@ -59,7 +91,10 @@ FOUNDATION_STATIC void app_initialize_apis(const api_plugin_context_t* context, 
         // register_menu
         [](const char* path, size_t path_length, const char* shortcut, size_t shortcut_length, api_app_menu_flags_t flags, void(*callback)(void*), void* user_data)
         {
-            app_register_menu(HASH_PLUGIN, path, path_length, shortcut, shortcut_length, (app_menu_flags_t)flags, callback, user_data);
+            app_register_menu(HASH_PLUGIN, path, path_length, shortcut, shortcut_length, (app_menu_flags_t)flags, [callback](void* user_data)
+            {
+                plugin_invoke_callback(nullptr, STRING_CONST("plugin_register_menu"), callback, user_data);
+            }, user_data);
         }
     };
     FOUNDATION_ASSERT(AppMenuFlags::None == APP_MENU_NONE);
@@ -207,7 +242,7 @@ void plugin_render()
     {
         plugin_t* plugin = _plugins + i;
         if (plugin->context.callbacks.render)
-            plugin->context.callbacks.render();
+            plugin_invoke_callback(plugin, STRING_CONST("plugin_render"), plugin->context.callbacks.render);
     }
 }
 
@@ -217,7 +252,7 @@ void plugin_update()
     {
         plugin_t* plugin = _plugins + i;
         if (plugin->context.callbacks.update)
-            plugin->context.callbacks.update();
+            plugin_invoke_callback(plugin, STRING_CONST("plugin_update"), plugin->context.callbacks.update);
     }
 }
 

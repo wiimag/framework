@@ -29,10 +29,12 @@ typedef function<void(void*)> app_dialog_close_handler_t;
 typedef function<void(GLFWwindow* window)> app_update_handler_t;
 typedef function<void(GLFWwindow* window, int frame_width, int frame_height)> app_render_handler_t;
 
+template<typename Handler = app_event_handler_t>
 struct app_callback_t
 {
-    app_event_handler_t handler;
-    void*               user_data;
+    Handler* handler;
+    void*    user_data;
+    void*    context;
 };
 
 /*! Set of flags used to customize the registration of a new menu item. 
@@ -56,7 +58,7 @@ DEFINE_ENUM_FLAGS(AppMenuFlags);
  *  @param dump_file The path to the dump file.
  *  @param length    The length of the dump file.
  */
-void app_exception_handler(const char* dump_file, size_t length);
+void app_exception_handler(void* context, const char* dump_file, size_t length);
 
 #if defined(FRAMEWORK_APP_IMPLEMENTATION)
 
@@ -203,7 +205,7 @@ void app_update_default(GLFWwindow* window);
  *  @param handler    The handler to be called when the application is rendering 3rdparty libs.
  *  @param user_data  The user data to be passed to the handler.
  */
-void app_add_render_lib_callback(app_event_handler_t handler, void* user_data);
+void app_add_render_lib_callback(void(*handler)(), void* user_data);
 
 /*! Unregister a callback to render 3rdparty libs information in the about window.
  *

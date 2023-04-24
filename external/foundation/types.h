@@ -745,7 +745,7 @@ typedef int (*exception_try_fn)(void* arg);
 and the process state was saved to a dump file
 \param file Dump file path
 \param length Length of file path */
-typedef void (*exception_handler_fn)(const char* file, size_t length);
+typedef void (*exception_handler_fn)(void* arg, const char* file, size_t length);
 
 /*! Object deallocation function prototype, used to deallocate an object of a specific type
 \param object Object pointer */

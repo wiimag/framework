@@ -47,6 +47,9 @@ FOUNDATION_STATIC void test1_plugin_render()
         return ImGui::End();
     
     ImGui::Text("Hello App, I am a plugin! (%d)", _update_counter);
+
+    if (ImGui::Button("Crash"))
+        test1_plugin_crash(nullptr);
     ImGui::End();
 }
 
