@@ -32,8 +32,10 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
 
 # Export foundation functions
-add_compile_definitions(FOUNDATION_COMPILE=1)
-add_compile_definitions(BUILD_DYNAMIC_LINK=1)
+if (BUILD_ENABLE_PLUGINS)
+    add_compile_definitions(FOUNDATION_COMPILE=1)
+    add_compile_definitions(BUILD_DYNAMIC_LINK=1)
+endif()
 
 # Project library
 add_library(foundation STATIC ${foundation_src} ${foundation_includes})

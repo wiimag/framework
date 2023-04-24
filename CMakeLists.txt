@@ -36,6 +36,9 @@ set(ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR} CACHE PATH "Root directory path")
 # Set build output dir
 set(BUILD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/build CACHE PATH "Build directory path")
 
+# Set plugins dir path
+set(PLUGINS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/plugins CACHE PATH "Plugins directory path")
+
 # Set plugin build output dir
 set(PLUGIN_BUILD_DIR ${BUILD_DIR}/plugins CACHE PATH "Build plugins path")
 
@@ -313,6 +316,12 @@ set(CMAKE_CXX_FLAGS_DEPLOY "${CMAKE_CXX_FLAGS_DEPLOY} ${CMAKE_CXX_FLAGS_RELEASE}
 
 # Copy release linker flags to deploy
 set(CMAKE_EXE_LINKER_FLAGS_DEPLOY "${CMAKE_EXE_LINKER_FLAGS_DEPLOY} ${CMAKE_EXE_LINKER_FLAGS_RELEASE}")
+
+if (MSVC)
+    # Generate PDB files for debug and release builds
+    set(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} /DEBUG")
+    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /DEBUG")
+endif()
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 

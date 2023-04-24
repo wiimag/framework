@@ -12,13 +12,8 @@ project(framework)
 
 set(FRAMEWORK_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 
-# Load app source files
-file(GLOB API_FILES ${ROOT_DIR}/api/*.h)
-source_group("api" FILES ${API_FILES})
-
 # Load framework source files
 file(GLOB FRAMEWORK_SOURCES
-    "${ROOT_DIR}/external/foundation/main.c"
     "${FRAMEWORK_DIR}/*.cpp"
     "${FRAMEWORK_DIR}/*.h"
     "${FRAMEWORK_DIR}/*.hpp"
@@ -26,11 +21,19 @@ file(GLOB FRAMEWORK_SOURCES
 )
 source_group("framework" FILES ${FRAMEWORK_SOURCES})
 
+if (BUILD_ENABLE_PLUGINS)
+    # Load API source filess
+    file(GLOB API_FILES ${PLUGINS_DIR}/api/*.h)
+    source_group("api" FILES ${API_FILES})
+
+    # Add main.c explicitly to the framework library if plugins are enabled
+    # This is because the foundation_lib excludes it if built with BUILD_DYNAMIC_LINK=1 to export symbols
+    list(APPEND FRAMEWORK_SOURCES ${ROOT_DIR}/external/foundation/main.c)
+endif()
+
 # Add *.mm files for OSX
 if (APPLE)
-    file(GLOB FRAMEWORK_SOURCES_OSX
-        ${FRAMEWORK_DIR}/*.mm
-    )
+    file(GLOB FRAMEWORK_SOURCES_OSX ${FRAMEWORK_DIR}/*.mm)
     list(APPEND FRAMEWORK_SOURCES ${FRAMEWORK_SOURCES_OSX})
 endif()
 

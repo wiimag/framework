@@ -13,11 +13,11 @@ include(${SHARED_MODULE_PATH})
 # Define project
 project(${PluginId})
 
-# Load app source files
-file(GLOB API_FILES ${ROOT_DIR}/api/*.h)
+# Load api headers
+file(GLOB API_FILES ${PLUGINS_DIR}/api/*.h)
 source_group("api" FILES ${API_FILES})
 
-# Load app source files
+# Load plugin source files
 file(GLOB_RECURSE SOURCES_FILES 
     "${CMAKE_CURRENT_SOURCE_DIR}/*.h" 
     "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
@@ -34,6 +34,7 @@ endif()
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG ${PLUGIN_BUILD_DIR})
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${PLUGIN_BUILD_DIR})
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEPLOY ${PLUGIN_BUILD_DIR})
+set(CMAKE_PDB_OUTPUT_DIRECTORY ${PLUGIN_BUILD_DIR})
 set(CMAKE_PDB_OUTPUT_DIRECTORY_DEBUG ${PLUGIN_BUILD_DIR})
 set(CMAKE_PDB_OUTPUT_DIRECTORY_RELEASE ${PLUGIN_BUILD_DIR})
 
@@ -42,7 +43,7 @@ add_library(${PluginId} SHARED ${API_FILES} ${SOURCES_FILES})
 set_target_properties(${PluginId} PROPERTIES FOLDER "plugins")
 
 # Define foundation_lib properties
-target_include_directories(${PluginId} PUBLIC ${ROOT_DIR}/api)
+target_include_directories(${PluginId} PUBLIC ${PLUGINS_DIR}/api)
 target_include_directories(${PluginId} PUBLIC ${ROOT_DIR}/external/)
 target_compile_definitions(${PluginId} PUBLIC -DBUILD_DYNAMIC_LINK=1)
 target_compile_definitions(${PluginId} PUBLIC -DFOUNDATION_SIZE_REAL=8)

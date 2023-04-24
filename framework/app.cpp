@@ -5,7 +5,6 @@
  * This module contains application framework specific code. 
  * It is expected that the project sources also includes an app.cpp and defines the following functions:
  *  extern const char* app_title()
- *  extern void app_exception_handler(const char* dump_file, size_t length)
  *  extern void app_initialize()
  *  extern void app_shutdown()
  *  extern void app_update()
@@ -29,6 +28,7 @@
 #include <foundation/version.h>
 #include <foundation/stacktrace.h>
 #include <foundation/hashstrings.h>
+#include <foundation/process.h>
 
 #define HASH_APP static_hash_string("app", 3, 0x6ced59ff7a1fae4bULL)
 
@@ -65,6 +65,8 @@ struct app_menu_t
 
 static app_menu_t* _menus = nullptr;
 static app_dialog_t* _dialogs = nullptr;
+
+static app_callback_t* _render_lib_callbacks = nullptr;
 
 //
 // # PRIVATE
@@ -368,6 +370,14 @@ FOUNDATION_STATIC void app_main_menu_end(GLFWwindow* window)
 //
 // # PUPLIC API
 //
+
+void app_exception_handler(const char* dump_file, size_t length)
+{
+    FOUNDATION_UNUSED(dump_file);
+    FOUNDATION_UNUSED(length);
+    log_error(0, ERROR_EXCEPTION, STRING_CONST("Unhandled exception"));
+    process_exit(-1);
+}
 
 void app_open_dialog(const char* title, const app_dialog_handler_t& handler, 
     uint32_t width, uint32_t height, bool can_resize, 
@@ -674,6 +684,33 @@ void app_update_default(GLFWwindow* window)
 {    
     module_update();
     plugin_update();
+}
+
+void app_add_render_lib_callback(app_event_handler_t handler, void* user_data)
+{
+    app_callback_t callback;
+    callback.handler = handler;
+    callback.user_data = user_data;
+
+    array_push(_render_lib_callbacks, callback);
+}
+
+void app_remove_render_lib_callback(app_event_handler_t handler)
+{
+    for (unsigned i = 0, end = array_size(_render_lib_callbacks); i < end; ++i)
+    {
+        if (_render_lib_callbacks[i].handler == handler)
+        {
+            array_erase(_render_lib_callbacks, i);
+            break;
+        }
+    }
+}
+
+void app_render_3rdparty_libs()
+{
+    for (unsigned i = 0, end = array_size(_render_lib_callbacks); i < end; ++i)
+        _render_lib_callbacks[i].handler(_render_lib_callbacks[i].user_data);
 }
 
 //

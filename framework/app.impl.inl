@@ -26,14 +26,6 @@ extern const char* app_title()
     return PRODUCT_NAME;
 }
 
-extern void app_exception_handler(const char* dump_file, size_t length)
-{
-    FOUNDATION_UNUSED(dump_file);
-    FOUNDATION_UNUSED(length);
-    log_error(0, ERROR_EXCEPTION, STRING_CONST("Unhandled exception"));
-    process_exit(-1);
-}
-
 extern void app_configure(foundation_config_t& config, application_t& application)
 {
     application.flags = APPLICATION_GUI;
@@ -112,11 +104,6 @@ extern void app_render(GLFWwindow* window, int frame_width, int frame_height)
     } ImGui::End();
 }
 #endif
-
-extern void app_render_3rdparty_libs()
-{
-    
-}
 
 #if BUILD_TESTS
 extern int main_tests(void* _context, GLFWwindow* window)

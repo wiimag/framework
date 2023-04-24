@@ -7,8 +7,6 @@
 
 #include "version.h"
 
-#include <api/types.h>
-
 // Include most common application headers
 #include <framework/jobs.h>
 #include <framework/tabs.h>
@@ -31,6 +29,35 @@ typedef function<void(void*)> app_dialog_close_handler_t;
 typedef function<void(GLFWwindow* window)> app_update_handler_t;
 typedef function<void(GLFWwindow* window, int frame_width, int frame_height)> app_render_handler_t;
 
+struct app_callback_t
+{
+    app_event_handler_t handler;
+    void*               user_data;
+};
+
+/*! Set of flags used to customize the registration of a new menu item. 
+ *  @api enum app_menu_flags_t
+ */
+typedef enum class AppMenuFlags : uint32_t
+{
+    None = 0,
+
+    /*! Insert the menu items after all other menu items, this helps preserve the system menu order. */
+    Append = 1 << 0,
+
+    /*! Menu item defines a shortcut */
+    Shortcut = 1 << 1,
+
+} app_menu_flags_t; 
+DEFINE_ENUM_FLAGS(AppMenuFlags);
+
+/*! Handles exception at the application level.
+ * 
+ *  @param dump_file The path to the dump file.
+ *  @param length    The length of the dump file.
+ */
+void app_exception_handler(const char* dump_file, size_t length);
+
 #if defined(FRAMEWORK_APP_IMPLEMENTATION)
 
 #include <framework/app.impl.inl>
@@ -39,19 +66,6 @@ typedef function<void(GLFWwindow* window, int frame_width, int frame_height)> ap
 
 /*! Returns the application title. */
 extern const char* app_title();
-
-/*! Renders application 3rdparty libs using ImGui. 
- *
- *  TODO: Instead use a pointer callback that must be set by the application.
- */
-extern void app_render_3rdparty_libs();
-
-/*! Handles exception at the application level.
- * 
- *  @param dump_file The path to the dump file.
- *  @param length    The length of the dump file.
- */
-extern void app_exception_handler(const char* dump_file, size_t length);
 
 /*! Configure the application features and framework core services. 
  * 
@@ -183,3 +197,19 @@ void app_render_default(GLFWwindow* window, int frame_width, int frame_height,
  *  @remark This handler must be invoked explicitly from #app_update.
  */
 void app_update_default(GLFWwindow* window);
+
+/*! Register a callback to render 3rdparty libs information in the about window.
+ *
+ *  @param handler    The handler to be called when the application is rendering 3rdparty libs.
+ *  @param user_data  The user data to be passed to the handler.
+ */
+void app_add_render_lib_callback(app_event_handler_t handler, void* user_data);
+
+/*! Unregister a callback to render 3rdparty libs information in the about window.
+ *
+ *  @param handler    The handler to be called when the application is rendering 3rdparty libs.
+ */
+void app_remove_render_lib_callback(app_event_handler_t handler);
+
+/*! Renders application 3rdparty libs using ImGui in the about window. */
+void app_render_3rdparty_libs();

@@ -22,23 +22,6 @@ extern const char* app_title()
     return PRODUCT_NAME;
 }
 
-/*! Main entry point to setup the application exception handler.
- *
- *  You can use this function to setup a custom exception handler to log and report crashes.
- *
- *  @param dump_file The name of the dump file.
- *  @param length    The length of the dump file name.
- *
- *  @note The dump file is a binary file containing the application state at the time of the crash.
- */
-extern void app_exception_handler(const char* dump_file, size_t length)
-{
-    FOUNDATION_UNUSED(dump_file);
-    FOUNDATION_UNUSED(length);
-    log_error(0, ERROR_EXCEPTION, STRING_CONST("Unhandled exception"));
-    process_exit(-1);
-}
-
 /*! Main entry point to configure the application.
  *
  *  This function is called once when the application is starting up.
@@ -146,12 +129,4 @@ extern void app_render(GLFWwindow* window, int frame_width, int frame_height)
     };
 
     app_render_default(window, frame_width, frame_height, SETTINGS.current_tab, default_tab_render, settings_draw);
-}
-
-/*! Main entry point to additional 3rdparty library information 
- *  displayed in the default about dialog.
- */
-extern void app_render_3rdparty_libs()
-{
-    // HERE: Invoke here any function that wants to render 3rd party libs information
 }

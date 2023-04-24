@@ -27,6 +27,12 @@ FOUNDATION_STATIC void test1_plugin_menu(void* context)
     api->log->error(HASH_PLUGIN_TEST1, ERROR_NONE, STRING_CONST("test1_plugin_menu"));
 }
 
+FOUNDATION_STATIC void test1_plugin_crash(void* context)
+{
+    int* p = (int*)context;
+    *p = 0;
+}
+
 FOUNDATION_STATIC void test1_plugin_update()
 {
     ++_update_counter;
@@ -37,7 +43,7 @@ FOUNDATION_STATIC void test1_plugin_render()
     if (!_window_opened)
         return;
 
-    if (!ImGui::Begin("test1", &_window_opened))
+    if (!ImGui::Begin("Plugin test1", &_window_opened))
         return ImGui::End();
     
     ImGui::Text("Hello App, I am a plugin! (%d)", _update_counter);
@@ -58,11 +64,13 @@ FRAMEWORK_API_EXPORT int load_plugin(api_plugin_context_t* plugin)
     plugin->callbacks.update = test1_plugin_update;
 
     // Use the API to do things
-    api->app->register_menu(STRING_CONST("Plugins/test1"), nullptr, 0, AppMenuFlags::None, test1_plugin_menu, nullptr);
+    api->app->register_menu(STRING_CONST("Plugins/test1"), nullptr, 0, APP_MENU_NONE, test1_plugin_menu, nullptr);
+    api->app->register_menu(STRING_CONST("Plugins/crash"), nullptr, 0, APP_MENU_NONE, test1_plugin_crash, nullptr);
 
     return 0;
 }
 
 FRAMEWORK_API_EXPORT void unload_plugin()
 {
+    api = nullptr;
 }

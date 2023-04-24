@@ -7,7 +7,7 @@
 
 #include "plugin.h"
 
-#include <api/api.h>
+#include <plugins/api/api.h>
 
 #include <framework/app.h>
 #include <framework/module.h>
@@ -57,11 +57,14 @@ FOUNDATION_STATIC void app_initialize_apis(const api_plugin_context_t* context, 
     static api_app_t app_api
     {
         // register_menu
-        [](const char* path, size_t path_length, const char* shortcut, size_t shortcut_length, app_menu_flags_t flags, void(*callback)(void*), void* user_data)
+        [](const char* path, size_t path_length, const char* shortcut, size_t shortcut_length, api_app_menu_flags_t flags, void(*callback)(void*), void* user_data)
         {
-            app_register_menu(HASH_PLUGIN, path, path_length, shortcut, shortcut_length, flags, callback, user_data);
+            app_register_menu(HASH_PLUGIN, path, path_length, shortcut, shortcut_length, (app_menu_flags_t)flags, callback, user_data);
         }
     };
+    FOUNDATION_ASSERT(AppMenuFlags::None == APP_MENU_NONE);
+    FOUNDATION_ASSERT(AppMenuFlags::Append == APP_MENU_APPEND);
+    FOUNDATION_ASSERT(AppMenuFlags::Shortcut == APP_MENU_SHORTCUT);
 
     //
     // Log API
