@@ -24,3 +24,9 @@ option(BUILD_ENABLE_TESTS "Build tests" ON)
 
 # Set the build backend option to OFF by default.
 option(BUILD_ENABLE_BACKEND "Build backend" OFF)
+
+# Set options to build or not tools
+option(BUILD_ENABLE_TOOLS "Build tools" ON)
+
+# Set option to build or not plugins
+option(BUILD_ENABLE_PLUGINS "Build plugins" ON)

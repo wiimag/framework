@@ -13,7 +13,7 @@
 
 #include <doctest/doctest.h>
 
-FOUNDATION_EXTERN bool dispatcher_process_events();
+extern bool dispatcher_process_events();
 
 TEST_SUITE("Dispatcher")
 {

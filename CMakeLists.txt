@@ -36,6 +36,9 @@ set(ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR} CACHE PATH "Root directory path")
 # Set build output dir
 set(BUILD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/build CACHE PATH "Build directory path")
 
+# Set plugin build output dir
+set(PLUGIN_BUILD_DIR ${BUILD_DIR}/plugins CACHE PATH "Build plugins path")
+
 # Cache the shared module path
 # Then each nested CMakeLists.txt can include the shared.cmake file using the following command:
 #   include(${SHARED_MODULE_PATH})
@@ -248,6 +251,16 @@ if(MSVC)
     # Set /OPT:REF for static libraries as well
     set(CMAKE_STATIC_LINKER_FLAGS_RELEASE "${CMAKE_STATIC_LINKER_FLAGS_RELEASE} /LTCG")
 
+    # Set DLL output build directory
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG ${BUILD_DIR})
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${BUILD_DIR})
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEPLOY ${BUILD_DIR})
+
+    # Set PDB output build directory
+    set(CMAKE_PDB_OUTPUT_DIRECTORY_DEBUG ${BUILD_DIR})
+    set(CMAKE_PDB_OUTPUT_DIRECTORY_RELEASE ${BUILD_DIR})
+    set(CMAKE_PDB_OUTPUT_DIRECTORY_DEPLOY ${BUILD_DIR})
+
 elseif(XCODE)
 
     # Use fast floating point math
@@ -333,9 +346,20 @@ endif()
 # Load main exectuable project under sources/
 add_subdirectory(${ROOT_DIR}/sources)
 
-# Add subdirectories for all cmakelist under tools/
-file(GLOB_RECURSE CMAKE_LISTS ${ROOT_DIR}/tools/*CMakeLists.txt)
-foreach(CMAKE_LIST ${CMAKE_LISTS})
-    get_filename_component(CMAKE_LIST_DIR ${CMAKE_LIST} DIRECTORY)
-    add_subdirectory(${CMAKE_LIST_DIR})
-endforeach()
+if (BUILD_ENABLE_TOOLS)
+    # Add subdirectories for all cmakelists under tools/
+    file(GLOB_RECURSE TOOLS_LISTS ${ROOT_DIR}/tools/*CMakeLists.txt)
+    foreach(CMAKE_LIST ${TOOLS_LISTS})
+        get_filename_component(CMAKE_LIST_DIR ${CMAKE_LIST} DIRECTORY)
+        add_subdirectory(${CMAKE_LIST_DIR})
+    endforeach()
+endif()
+
+if (BUILD_ENABLE_PLUGINS)
+    # Add subdirectories for all cmakelists under plugins/
+    file(GLOB_RECURSE PLUGINS_LISTS ${ROOT_DIR}/plugins/*CMakeLists.txt)
+    foreach(CMAKE_LIST ${PLUGINS_LISTS})
+        get_filename_component(CMAKE_LIST_DIR ${CMAKE_LIST} DIRECTORY)
+        add_subdirectory(${CMAKE_LIST_DIR})
+    endforeach()
+endif()

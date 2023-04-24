@@ -1,5 +1,8 @@
 # Changelog
 
+## [1.2.0] - 2023-04-24
+- Add plugin API support to allow users to extend the application with their own code.
+
 ## [1.1.2] - 2023-04-23
 - Add `system_save_file_dialog` on OSX
 - Fix `build_setting` bash function on OSX

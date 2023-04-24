@@ -7,6 +7,8 @@
 
 #include "version.h"
 
+#include <api/types.h>
+
 // Include most common application headers
 #include <framework/jobs.h>
 #include <framework/tabs.h>
@@ -29,19 +31,6 @@ typedef function<void(void*)> app_dialog_close_handler_t;
 typedef function<void(GLFWwindow* window)> app_update_handler_t;
 typedef function<void(GLFWwindow* window, int frame_width, int frame_height)> app_render_handler_t;
 
-/*! Set of flags used to customize the registration of a new menu item. */
-typedef enum class AppMenuFlags
-{
-    None = 0,
-
-    /*! Insert the menu items after all other menu items, this helps preserve the system menu order. */
-    Append = 1 << 0,
-
-    /*! Menu item defines a shortcut */
-    Shortcut = 1 << 1,
-} app_menu_flags_t;
-DEFINE_ENUM_FLAGS(AppMenuFlags);
-
 #if defined(FRAMEWORK_APP_IMPLEMENTATION)
 
 #include <framework/app.impl.inl>
@@ -51,7 +40,10 @@ DEFINE_ENUM_FLAGS(AppMenuFlags);
 /*! Returns the application title. */
 extern const char* app_title();
 
-/*! Renders application 3rdparty libs using ImGui. */
+/*! Renders application 3rdparty libs using ImGui. 
+ *
+ *  TODO: Instead use a pointer callback that must be set by the application.
+ */
 extern void app_render_3rdparty_libs();
 
 /*! Handles exception at the application level.
@@ -164,3 +156,30 @@ void app_register_menu(
  *  @param window The window to render the menu items for.
  */
 void app_menu_help(GLFWwindow* window);
+
+/*! Default application render handler. 
+ *
+ *  The default application render draws a set of tabs at the top of the window, and
+ *  renders the current tab. The tab set is rendered using ImGui.
+ *
+ *  @param window       The main window used to render the application (can be null)
+ *  @param frame_width  The width of the frame to be rendered.
+ *  @param frame_height The height of the frame to be rendered.
+ *  @param current_tab  The current tab to be rendered.
+ *  @param default_tab  The default tab to be rendered.
+ *  @param settings_draw The settings draw function to be called when the settings tab is selected.
+ *
+ *  @remark This handler must be invoked explicitly from #app_render.
+ */
+void app_render_default(GLFWwindow* window, int frame_width, int frame_height,
+    int& current_tab, 
+    void(*default_tab)(),
+    void(*settings_draw)() = nullptr);
+
+/*! Default application update handler. 
+ * *
+ *  @param window The main window used to render the application (can be null)
+ *
+ *  @remark This handler must be invoked explicitly from #app_update.
+ */
+void app_update_default(GLFWwindow* window);

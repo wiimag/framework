@@ -12,8 +12,13 @@ project(framework)
 
 set(FRAMEWORK_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 
+# Load app source files
+file(GLOB API_FILES ${ROOT_DIR}/api/*.h)
+source_group("api" FILES ${API_FILES})
+
 # Load framework source files
 file(GLOB FRAMEWORK_SOURCES
+    "${ROOT_DIR}/external/foundation/main.c"
     "${FRAMEWORK_DIR}/*.cpp"
     "${FRAMEWORK_DIR}/*.h"
     "${FRAMEWORK_DIR}/*.hpp"
@@ -105,8 +110,6 @@ endif()
 
 # Use compiler flags from parent project
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
-
-# Use compiler flags from parent project
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
 
 # Add sources include directories
@@ -115,6 +118,7 @@ include_directories(${ROOT_DIR}/sources)
 
 # Create the application library
 add_library(framework STATIC 
+    ${API_FILES}
     ${FRAMEWORK_SOURCES} 
     ${TEST_SOURCES} 
     ${EXTERNAL_SOURCES} 
