@@ -264,7 +264,7 @@ if(MSVC)
     set(CMAKE_PDB_OUTPUT_DIRECTORY_RELEASE ${BUILD_DIR})
     set(CMAKE_PDB_OUTPUT_DIRECTORY_DEPLOY ${BUILD_DIR})
 
-elseif(XCODE)
+elseif(APPLE)
 
     # Use fast floating point math
     add_compile_options(-ffast-math)

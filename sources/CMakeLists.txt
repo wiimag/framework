@@ -155,7 +155,7 @@ if (MSVC)
     # Ignore specific default libraries msvcrt.lib;libcmt.lib in debug for MSVC
     set(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} /NODEFAULTLIB:msvcrt.lib /NODEFAULTLIB:libcmt.lib")
 
-elseif(XCODE)
+elseif(APPLE)
 
     # Link with core libraries
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -framework CoreFoundation -framework CoreServices")
