@@ -70,7 +70,7 @@ static objectmap_t* _dispatcher_threads = nullptr;
 // # PRIVATE
 //
 
-FOUNDATION_EXTERN bool dispatcher_process_events()
+extern bool dispatcher_process_events()
 {
     PERFORMANCE_TRACKER("dispatcher_process_events");
 

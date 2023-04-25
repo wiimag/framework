@@ -69,13 +69,11 @@ Then you usually want to start editing sources under `sources/`. As a starting p
 
 Basically, you need to have a `cpp` file that implements minimally the following functions:
 - `app_title` - Returns the application title.
-- `app_exception_handler` - Defines how the application handles crashes.
 - `app_configure` - Defines how the application and foundation is configured.
 - `app_initialize` - Defines how the application is initialized (i.e. initialize services and modules once, etc).
 - `app_shutdown` - Defines how the application is finalized (i.e. shutdown services and modules once, etc).
 - `app_update` - Defines how the application is updated prior to render each frames.
 - `app_render` - Defines how the application is rendered each frame.
-- `app_render_3rdparty_libs` - Entry point to render additional 3rd party libraries used for your specific application.
 
 ### Build and run
 

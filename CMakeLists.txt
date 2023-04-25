@@ -36,6 +36,12 @@ set(ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR} CACHE PATH "Root directory path")
 # Set build output dir
 set(BUILD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/build CACHE PATH "Build directory path")
 
+# Set plugins dir path
+set(PLUGINS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/plugins CACHE PATH "Plugins directory path")
+
+# Set plugin build output dir
+set(PLUGIN_BUILD_DIR ${BUILD_DIR}/plugins CACHE PATH "Build plugins path")
+
 # Cache the shared module path
 # Then each nested CMakeLists.txt can include the shared.cmake file using the following command:
 #   include(${SHARED_MODULE_PATH})
@@ -248,7 +254,17 @@ if(MSVC)
     # Set /OPT:REF for static libraries as well
     set(CMAKE_STATIC_LINKER_FLAGS_RELEASE "${CMAKE_STATIC_LINKER_FLAGS_RELEASE} /LTCG")
 
-elseif(XCODE)
+    # Set DLL output build directory
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG ${BUILD_DIR})
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${BUILD_DIR})
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEPLOY ${BUILD_DIR})
+
+    # Set PDB output build directory
+    set(CMAKE_PDB_OUTPUT_DIRECTORY_DEBUG ${BUILD_DIR})
+    set(CMAKE_PDB_OUTPUT_DIRECTORY_RELEASE ${BUILD_DIR})
+    set(CMAKE_PDB_OUTPUT_DIRECTORY_DEPLOY ${BUILD_DIR})
+
+elseif(APPLE)
 
     # Use fast floating point math
     add_compile_options(-ffast-math)
@@ -286,6 +302,9 @@ elseif(XCODE)
         add_compile_options(-Wno-tautological-constant-compare -Wno-unguarded-availability-new)
     endif()
 
+    # Define -Wno-varargs
+    add_compile_options(-Wno-varargs)
+
 endif()
 
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} ${CMAKE_FLAGS_RELEASE}")
@@ -297,6 +316,12 @@ set(CMAKE_CXX_FLAGS_DEPLOY "${CMAKE_CXX_FLAGS_DEPLOY} ${CMAKE_CXX_FLAGS_RELEASE}
 
 # Copy release linker flags to deploy
 set(CMAKE_EXE_LINKER_FLAGS_DEPLOY "${CMAKE_EXE_LINKER_FLAGS_DEPLOY} ${CMAKE_EXE_LINKER_FLAGS_RELEASE}")
+
+if (MSVC)
+    # Generate PDB files for debug and release builds
+    set(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} /DEBUG")
+    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /DEBUG")
+endif()
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
@@ -330,9 +355,20 @@ endif()
 # Load main exectuable project under sources/
 add_subdirectory(${ROOT_DIR}/sources)
 
-# Add subdirectories for all cmakelist under tools/
-file(GLOB_RECURSE CMAKE_LISTS ${ROOT_DIR}/tools/*CMakeLists.txt)
-foreach(CMAKE_LIST ${CMAKE_LISTS})
-    get_filename_component(CMAKE_LIST_DIR ${CMAKE_LIST} DIRECTORY)
-    add_subdirectory(${CMAKE_LIST_DIR})
-endforeach()
+if (BUILD_ENABLE_TOOLS)
+    # Add subdirectories for all cmakelists under tools/
+    file(GLOB_RECURSE TOOLS_LISTS ${ROOT_DIR}/tools/*CMakeLists.txt)
+    foreach(CMAKE_LIST ${TOOLS_LISTS})
+        get_filename_component(CMAKE_LIST_DIR ${CMAKE_LIST} DIRECTORY)
+        add_subdirectory(${CMAKE_LIST_DIR})
+    endforeach()
+endif()
+
+if (BUILD_ENABLE_PLUGINS)
+    # Add subdirectories for all cmakelists under plugins/
+    file(GLOB_RECURSE PLUGINS_LISTS ${ROOT_DIR}/plugins/*CMakeLists.txt)
+    foreach(CMAKE_LIST ${PLUGINS_LISTS})
+        get_filename_component(CMAKE_LIST_DIR ${CMAKE_LIST} DIRECTORY)
+        add_subdirectory(${CMAKE_LIST_DIR})
+    endforeach()
+endif()

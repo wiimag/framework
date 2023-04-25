@@ -152,14 +152,10 @@ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS}")
 
 if (MSVC)
 
-    # Generate PDB files for debug and release builds
-    set(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} /DEBUG")
-    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /DEBUG")
-
     # Ignore specific default libraries msvcrt.lib;libcmt.lib in debug for MSVC
     set(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} /NODEFAULTLIB:msvcrt.lib /NODEFAULTLIB:libcmt.lib")
 
-elseif(XCODE)
+elseif(APPLE)
 
     # Link with core libraries
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -framework CoreFoundation -framework CoreServices")
@@ -201,19 +197,14 @@ if (MSVC)
         ${EXTERNAL_SOURCES}
     )
 
+    # Have the application export foundation_lib and IMGUI symbols.
+    set_property(TARGET ${AppId} PROPERTY ENABLE_EXPORTS ON)
+
     # Copy the config/*.sjson files to the build directory
     #file(COPY ${CONFIG_FILES} DESTINATION ${ROOT_DIR}/build)
 
-    set_target_properties(${AppId} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${ROOT_DIR}/build/.)
-    set_target_properties(${AppId} PROPERTIES RUNTIME_OUTPUT_DIRECTORY_DEBUG ${ROOT_DIR}/build/.)
-    set_target_properties(${AppId} PROPERTIES RUNTIME_OUTPUT_DIRECTORY_RELEASE ${ROOT_DIR}/build/.)
-    set_target_properties(${AppId} PROPERTIES RUNTIME_OUTPUT_DIRECTORY_DEPLOY ${ROOT_DIR}/build/.)
-
-    # Make sure we have the pdb in the same folder.
     set_target_properties(${AppId} PROPERTIES PDB_OUTPUT_DIRECTORY ${ROOT_DIR}/build/.)
-    set_target_properties(${AppId} PROPERTIES PDB_OUTPUT_DIRECTORY_DEBUG ${ROOT_DIR}/build/.)
-    set_target_properties(${AppId} PROPERTIES PDB_OUTPUT_DIRECTORY_RELEASE ${ROOT_DIR}/build/.)
-    set_target_properties(${AppId} PROPERTIES PDB_OUTPUT_DIRECTORY_DEPLOY ${ROOT_DIR}/build/.)
+    set_target_properties(${AppId} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${ROOT_DIR}/build/.)
 
     if (BUILD_SERVICE_EXE)
         # Create service.exe target to provide a way to run the app from the command line
@@ -229,9 +220,6 @@ if (MSVC)
         set_target_properties(service-exe PROPERTIES LINK_FLAGS "/SUBSYSTEM:CONSOLE")
 
         set_target_properties(service-exe PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${ROOT_DIR}/build/.)
-        set_target_properties(service-exe PROPERTIES RUNTIME_OUTPUT_DIRECTORY_DEBUG ${ROOT_DIR}/build/.)
-        set_target_properties(service-exe PROPERTIES RUNTIME_OUTPUT_DIRECTORY_RELEASE ${ROOT_DIR}/build/.)
-        set_target_properties(service-exe PROPERTIES RUNTIME_OUTPUT_DIRECTORY_DEPLOY ${ROOT_DIR}/build/.)
 
         target_link_libraries(service-exe service-framework)
 
@@ -295,4 +283,4 @@ elseif(APPLE)
 endif()
 
 # Add dependencies to other libs
-target_link_libraries(${AppId} framework)
+target_link_libraries(${AppId} PRIVATE framework)

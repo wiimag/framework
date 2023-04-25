@@ -217,7 +217,7 @@ dispatcher_event_listener_id_t dispatcher_register_event_listener(
  * 
  *  @param event_name        Name of the event, must be a static string literal, i.e. "RENDER_FRAME"
  *  @param event_name_length Length of the event name
- *  @param callback          Callback to be invoked when the event is triggered.
+ *  @param callback          Callback to be invoked when the event is triggered (#bool(const dispatcher_event_args_t& args))
  *  @param options           Registration and event execution options
  *  @param user_data         User data to be passed to the callback when invoked.
  *  

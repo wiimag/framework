@@ -18,6 +18,13 @@ source_group("includes" FILES ${imgui_includes})
 # Add _LIB only for static library
 add_compile_definitions(_LIB)
 
+if (BUILD_ENABLE_PLUGINS)
+    if (MSVC)
+        # Define IMGUI_API to export symbols
+        add_compile_definitions("IMGUI_API=__declspec(dllexport)")
+    endif()
+endif()
+
 # Use compiler flags from parent project
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
 

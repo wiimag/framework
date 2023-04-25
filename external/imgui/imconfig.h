@@ -14,10 +14,22 @@
 
 #pragma once
 
+#include <foundation/assert.h>
+
+// ###############################################################################
+#include "IconsMaterialDesign.h"
+#define THIN_SPACE "\xe2\x80\x89"	// U+2009
+// ###############################################################################
+
 //---- Define assertion handler. Defaults to calling assert().
 // If your macro uses multiple statements, make sure is enclosed in a 'do { .. } while (0)' block so it can be used as a single statement.
 //#define IM_ASSERT(_EXPR)  MyAssert(_EXPR)
-//#define IM_ASSERT(_EXPR)  ((void)(_EXPR))     // Disable asserts
+
+#ifdef NDEBUG
+#define IM_ASSERT(_EXPR)  ((void)(_EXPR))     // Disable asserts
+#else
+#define IM_ASSERT(_EXPR)  FOUNDATION_ASSERT(_EXPR)
+#endif
 
 //---- Define attributes of all API symbols declarations, e.g. for DLL under Windows
 // Using Dear ImGui via a shared library is not recommended, because of function call overhead and because we don't guarantee backward nor forward ABI compatibility.
@@ -56,7 +68,7 @@
 //#define IMGUI_USE_BGRA_PACKED_COLOR
 
 //---- Use 32-bit for ImWchar (default is 16-bit) to support unicode planes 1-16. (e.g. point beyond 0xFFFF like emoticons, dingbats, symbols, shapes, ancient languages, etc...)
-//#define IMGUI_USE_WCHAR32
+#define IMGUI_USE_WCHAR32
 
 //---- Avoid multiple STB libraries implementations, or redefine path/filenames to prioritize another version
 // By default the embedded implementations are declared static and not available outside of Dear ImGui sources files.

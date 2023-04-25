@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.2.0] - 2023-04-24
+- Add plugin API support to allow users to extend the application with their own code.
+
+## [1.1.2] - 2023-04-23
+- Add `system_save_file_dialog` on OSX
+- Fix `build_setting` bash function on OSX
+- Fix `MEM_DELETE` when pointer is null
+- Fix OSX compilation issues
+- Improve `./run` script
+- Remove `FOUNDATION_CONSTCALL` usage which is causing issues on OSX
+
 ## [1.1.1] - 2023-04-22
 - Add `./run package` (through `build-package.sh`) script to build and package the library for distribution.
 - Add `BUILD_ENABLE_BACKEND` build switch

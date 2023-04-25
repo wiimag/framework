@@ -21,11 +21,19 @@ file(GLOB FRAMEWORK_SOURCES
 )
 source_group("framework" FILES ${FRAMEWORK_SOURCES})
 
+if (BUILD_ENABLE_PLUGINS)
+    # Load API source filess
+    file(GLOB API_FILES ${PLUGINS_DIR}/api/*.h)
+    source_group("api" FILES ${API_FILES})
+
+    # Add main.c explicitly to the framework library if plugins are enabled
+    # This is because the foundation_lib excludes it if built with BUILD_DYNAMIC_LINK=1 to export symbols
+    list(APPEND FRAMEWORK_SOURCES ${ROOT_DIR}/external/foundation/main.c)
+endif()
+
 # Add *.mm files for OSX
 if (APPLE)
-    file(GLOB FRAMEWORK_SOURCES_OSX
-        ${FRAMEWORK_DIR}/*.mm
-    )
+    file(GLOB FRAMEWORK_SOURCES_OSX ${FRAMEWORK_DIR}/*.mm)
     list(APPEND FRAMEWORK_SOURCES ${FRAMEWORK_SOURCES_OSX})
 endif()
 
@@ -105,8 +113,6 @@ endif()
 
 # Use compiler flags from parent project
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
-
-# Use compiler flags from parent project
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
 
 # Add sources include directories
@@ -115,6 +121,7 @@ include_directories(${ROOT_DIR}/sources)
 
 # Create the application library
 add_library(framework STATIC 
+    ${API_FILES}
     ${FRAMEWORK_SOURCES} 
     ${TEST_SOURCES} 
     ${EXTERNAL_SOURCES} 
@@ -166,6 +173,16 @@ elseif(APPLE)
 
     # Enable openmp support
     target_compile_definitions(framework PUBLIC _OPENMP)
+
+    # Ignore -Wshorten-64-to-32
+    target_compile_options(framework PUBLIC -Wno-shorten-64-to-32)
+
+    # Ignore -Wunused-value
+    target_compile_options(framework PUBLIC -Wno-unused-value)
+
+    # Ignore -Wformat-security
+    target_compile_options(framework PUBLIC -Wno-format)
+    target_compile_options(framework PUBLIC -Wno-format-security)
 
 endif()
 

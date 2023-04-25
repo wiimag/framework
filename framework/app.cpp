@@ -5,7 +5,6 @@
  * This module contains application framework specific code. 
  * It is expected that the project sources also includes an app.cpp and defines the following functions:
  *  extern const char* app_title()
- *  extern void app_exception_handler(const char* dump_file, size_t length)
  *  extern void app_initialize()
  *  extern void app_shutdown()
  *  extern void app_update()
@@ -15,6 +14,7 @@
 #include "app.h"
 #include "version.h"
 
+#include <framework/glfw.h>
 #include <framework/imgui.h>
 #include <framework/module.h>
 #include <framework/string.h>
@@ -22,11 +22,13 @@
 #include <framework/profiler.h>
 #include <framework/array.h>
 #include <framework/common.h>
+#include <framework/plugin.h>
 
 #include <foundation/memory.h>
 #include <foundation/version.h>
 #include <foundation/stacktrace.h>
 #include <foundation/hashstrings.h>
+#include <foundation/process.h>
 
 #define HASH_APP static_hash_string("app", 3, 0x6ced59ff7a1fae4bULL)
 
@@ -63,6 +65,8 @@ struct app_menu_t
 
 static app_menu_t* _menus = nullptr;
 static app_dialog_t* _dialogs = nullptr;
+
+static app_callback_t<void()>* _render_lib_callbacks = nullptr;
 
 //
 // # PRIVATE
@@ -295,13 +299,90 @@ FOUNDATION_STATIC void app_dialogs_render()
         }
         ImGui::End();
     }
+
+    plugin_render();
+}
+
+/*! Render leading menus. 
+ *
+ *  @param window The GLFW window.
+ */
+FOUNDATION_STATIC void app_main_menu_begin(GLFWwindow* window)
+{
+    if (!ImGui::BeginMenuBar())
+        return;
+
+    if (ImGui::TrBeginMenu("File"))
+    {
+        if (ImGui::TrBeginMenu("Create"))
+        {
+            ImGui::EndMenu();
+        }
+
+        if (ImGui::TrBeginMenu("Open"))
+        {
+            ImGui::EndMenu();
+        }
+
+        ImGui::Separator();
+        if (ImGui::TrMenuItem(ICON_MD_EXIT_TO_APP " Exit", "Alt+F4"))
+            glfw_request_close_window(window);
+            
+        ImGui::EndMenu();
+    }
+
+    ImGui::EndMenuBar();
+
+    // Let the framework inject some menus.
+    app_menu_begin(window);
+}
+
+/*! Render trailing menus. 
+ *
+ *  In between leading and trailing menus the framework usually 
+ *  injects additional menus through registered modules.
+ *
+ *  @param window The GLFW window.
+ */
+FOUNDATION_STATIC void app_main_menu_end(GLFWwindow* window)
+{
+    // Let registered module inject some menus.
+    module_foreach_menu();
+
+    if (ImGui::BeginMenuBar())
+    {
+        if (ImGui::TrBeginMenu("Windows"))
+            ImGui::EndMenu();
+            
+        app_menu_help(window);
+
+        // Update special application menu status.
+        // Usually controls are displayed at the far right of the menu.
+        profiler_menu_timer();
+        module_foreach_menu_status();
+
+        ImGui::EndMenuBar();
+    }
+
+    app_menu_end(window);
 }
 
 //
 // # PUPLIC API
 //
 
-void app_open_dialog(const char* title, const app_dialog_handler_t& handler, uint32_t width, uint32_t height, bool can_resize, void* user_data, const app_dialog_close_handler_t& close_handler)
+void app_exception_handler(void* context, const char* dump_file, size_t length)
+{
+    FOUNDATION_UNUSED(context);
+    FOUNDATION_UNUSED(dump_file);
+    FOUNDATION_UNUSED(length);
+    log_error(0, ERROR_EXCEPTION, STRING_CONST("Unhandled exception"));
+    process_exit(-1);
+}
+
+void app_open_dialog(const char* title, const app_dialog_handler_t& handler, 
+    uint32_t width, uint32_t height, bool can_resize, 
+    void* user_data, const app_dialog_close_handler_t& close_handler)
 {
     FOUNDATION_ASSERT(handler);
 
@@ -545,14 +626,100 @@ void app_menu_help(GLFWwindow* window)
     ImGui::EndMenu();
 }
 
+void app_render_default(GLFWwindow* window, int frame_width, int frame_height, 
+    int& current_tab, 
+    void(*default_tab)(),
+    void(*settings_draw)())
+{
+    ImGui::SetNextWindowPos(ImVec2(0, 0));
+    ImGui::SetNextWindowSize(ImVec2((float)frame_width, (float)frame_height));
+
+    if (ImGui::Begin(app_title(), nullptr,
+        ImGuiWindowFlags_NoBringToFrontOnFocus |
+        ImGuiWindowFlags_NoResize |
+        ImGuiWindowFlags_NoMove |
+        ImGuiWindowFlags_NoCollapse |
+        ImGuiWindowFlags_NoTitleBar |
+        ImGuiWindowFlags_MenuBar))
+    {
+        // Render main menus
+        app_main_menu_begin(window);
+
+        // Render document tabs
+        static ImGuiTabBarFlags tabs_init_flags = ImGuiTabBarFlags_Reorderable;
+        if (tabs_begin("Tabs", current_tab, tabs_init_flags, nullptr))
+        {
+            // Render the settings tab
+            tab_set_color(TAB_COLOR_APP_3D);
+            tab_draw(tr(ICON_MD_HEXAGON " Example "), nullptr, 0, default_tab);
+
+            // Render module registered tabs
+            module_foreach_tabs();
+
+            if (settings_draw)
+            {
+                // Render the settings tab
+                tab_set_color(TAB_COLOR_SETTINGS);
+                tab_draw(tr(ICON_MD_SETTINGS " Settings ##Settings"), nullptr,
+                    ImGuiTabItemFlags_NoPushId | ImGuiTabItemFlags_Trailing | ImGuiTabItemFlags_NoReorder, settings_draw);
+            }
+
+            // We differ setting ImGuiTabBarFlags_AutoSelectNewTabs until after the first frame,
+            // since we manually select the first tab in the list using the user session data.
+            if ((tabs_init_flags & ImGuiTabBarFlags_AutoSelectNewTabs) == 0)
+                tabs_init_flags |= ImGuiTabBarFlags_AutoSelectNewTabs;
+
+            tabs_end();
+        }
+
+        // Render trailing menus
+        app_main_menu_end(window);
+
+        // Render main dialog and floating windows
+        module_foreach_window();
+
+    } ImGui::End();
+}
+
+void app_update_default(GLFWwindow* window)
+{    
+    module_update();
+    plugin_update();
+}
+
+void app_add_render_lib_callback(void(*handler)(), void* user_data)
+{
+    app_callback_t<void()> callback;
+    callback.handler = handler;
+    callback.user_data = user_data;
+
+    array_push(_render_lib_callbacks, callback);
+}
+
+void app_remove_render_lib_callback(void(*handler)())
+{
+    for (unsigned i = 0, end = array_size(_render_lib_callbacks); i < end; ++i)
+    {
+        if (_render_lib_callbacks[i].handler == handler)
+        {
+            array_erase(_render_lib_callbacks, i);
+            break;
+        }
+    }
+}
+
+void app_render_3rdparty_libs()
+{
+    for (unsigned i = 0, end = array_size(_render_lib_callbacks); i < end; ++i)
+        _render_lib_callbacks[i].handler();
+}
+
 //
 // # SERVICE
 //
 
 FOUNDATION_STATIC void app_framework_initialize()
 {
-    //system_add_menu_item("test");
-
     module_register_window(HASH_APP, app_dialogs_render);
 }
 
