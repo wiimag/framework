@@ -111,7 +111,12 @@ add_compile_options(-DMAX_QUERY_THREADS=${BUILD_MAX_QUERY_THREADS})
 add_compile_options("$<$<CONFIG:DEBUG>:-DBUILD_DEBUG=1>")
 add_compile_options("$<$<CONFIG:RELEASE>:-DBUILD_RELEASE=1>")
 add_compile_options("$<$<CONFIG:DEPLOY>:-DBUILD_DEPLOY=1>")
+
+if (NOT BUILD_ENABLE_DEVELOPMENT)
+    add_compile_options("$<$<CONFIG:DEBUG,RELEASE>:-DBUILD_DEVELOPMENT=0>")
+endif()
 add_compile_options("$<$<CONFIG:DEPLOY>:-DBUILD_DEVELOPMENT=0>")
+
 add_compile_options("$<$<CONFIG:DEBUG,RELEASE,DEPLOY>:-DBUILD_ENABLE_LOG=1>")
 add_compile_options("$<$<CONFIG:RELEASE,DEPLOY>:-DBUILD_ENABLE_DEBUG_LOG=0>")
 add_compile_options("$<$<CONFIG:RELEASE,DEPLOY>:-DBUILD_ENABLE_ASSERT=0>")
@@ -141,6 +146,9 @@ add_compile_options(-DPRODUCT_CODE_NAME="${PRODUCT_CODE_NAME}")
 
 read_build_settings_property("PRODUCT_URL" PRODUCT_URL)
 add_compile_options(-DPRODUCT_URL="${PRODUCT_URL}")
+
+read_build_settings_property("PRODUCT_VERSIONS_URL" PRODUCT_VERSIONS_URL)
+add_compile_options(-DPRODUCT_VERSIONS_URL="${PRODUCT_VERSIONS_URL}")
 
 # Set product version defines
 read_build_settings_property("VERSION_MAJOR" VERSION_MAJOR)

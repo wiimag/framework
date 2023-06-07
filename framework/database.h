@@ -18,6 +18,8 @@ hash_t hash(const T& value)
     return hash(&value, FOUNDATION_ALIGNOF(T));
 }
 
+constexpr const hash_t INVALID_KEY{ 0 };
+
 template<typename T, 
     hash_t(*HASHER)(const T& v) = [](const T& v) { return hash(v); }>
 struct database
@@ -26,8 +28,6 @@ struct database
     size_t capacity;
     hashtable64_t* hashes;
     mutable shared_mutex mutex;
-
-    static constexpr const hash_t INVALID_KEY{ 0 };
 
     database()
         : elements(nullptr)
@@ -48,8 +48,8 @@ struct database
         hashtable64_t* old_table = hashes;
         capacity *= size_t(2);
         hashtable64_t* new_hash_table = hashtable64_allocate(capacity);
-        for (int i = 0, end = array_size(elements); i < end; ++i)
-            hashtable64_set(new_hash_table, HASHER(elements[i]), i + 1); // 1 based
+        for (unsigned i = 0, end = array_size(elements); i < end; ++i)
+            hashtable64_set(new_hash_table, HASHER(elements[i]), (uint64_t)(i + 1)); // 1 based
 
         hashes = new_hash_table;
         hashtable64_deallocate(old_table);

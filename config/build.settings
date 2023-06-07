@@ -4,21 +4,23 @@ PROJECT_ID=app
 
 # Product info
 PRODUCT_NAME=Example
-PRODUCT_COMPANY=Wiimag Inc.
+PRODUCT_COMPANY=Wiimag Inc
 PRODUCT_DESCRIPTION=Application Framework Example
 PRODUCT_CODE_NAME=example
-PRODUCT_COPYRIGHT=Copyright (C) 2022-2023 - https://equals-forty-two.com - All rights reserved
-PRODUCT_URL=https://equals-forty-two.com
+PRODUCT_COPYRIGHT=Copyright (C) 2022-2023 - https://wiimag.com - All rights reserved
+PRODUCT_URL=https://wiimag.com
+PRODUCT_VERSIONS_URL=https://wiimag.com/versions
 
 # Version info
 VERSION_MAJOR=1
-VERSION_MINOR=1
-VERSION_PATCH=2
+VERSION_MINOR=2
+VERSION_PATCH=0
 
 # Build settings (Usually passed to Cmake)
 BUILD_SERVICE_EXE=OFF
 BUILD_ENABLE_TESTS=ON
+BUILD_ENABLE_BACKEND=OFF
+BUILD_ENABLE_DEVELOPMENT=ON
 BUILD_ENABLE_LOCALIZATION=ON
 BUILD_MAX_JOB_THREADS=2
 BUILD_MAX_QUERY_THREADS=2
-BUILD_ENABLE_BACKEND=OFF

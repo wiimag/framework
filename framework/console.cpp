@@ -15,10 +15,12 @@
 #include <framework/generics.h>
 #include <framework/string.h>
 #include <framework/array.h>
+#include <framework/system.h>
 
 #include <foundation/log.h>
 #include <foundation/error.h>
 #include <foundation/hashstrings.h>
+#include <foundation/stream.h>
 
 #define HASH_CONSOLE static_hash_string("console", 7, 0xf4408b2738af51e7ULL)
 
@@ -55,6 +57,8 @@ static struct CONSOLE_MODULE
 
     generics::fixed_loop < string_t, 20, [](string_t& s) { string_deallocate(s.str); } > saved_expressions;
 
+    stream_t* log_stream = nullptr;
+
 } *_console_module;
 
 FOUNDATION_STATIC string_table_symbol_t console_string_encode(const char* s, size_t length /* = 0*/)
@@ -88,8 +92,17 @@ FOUNDATION_STATIC string_table_symbol_t console_string_encode(const char* s, siz
 
 FOUNDATION_STATIC void logger(hash_t context, error_level_t severity, const char* msg, size_t length)
 {
+    if (_console_module->log_stream)
+    {
+        stream_write_string(_console_module->log_stream, msg, length);
+        stream_write_endl(_console_module->log_stream);
+    }
+
 	#if BUILD_DEBUG
     if (error() == ERROR_ASSERT)
+        return;
+
+    if (system_debugger_attached() && severity <= ERRORLEVEL_DEBUG)
         return;
 	#endif
 
@@ -138,9 +151,8 @@ FOUNDATION_STATIC void logger(hash_t context, error_level_t severity, const char
             m.msg_symbol = console_string_encode(msg, length);
         }
 
-        char preview_buffer[256];
         string_const_t log_msg = string_table_to_string_const(_console_module->strings, m.msg_symbol);
-        string_const_t preview = string_remove_line_returns(STRING_BUFFER(preview_buffer), STRING_ARGS(log_msg));
+        string_const_t preview = string_remove_line_returns(SHARED_BUFFER(256), STRING_ARGS(log_msg));
 
         m.preview_symbol = console_string_encode(STRING_ARGS(preview));
         array_push_memcpy(_console_module->messages, &m);
@@ -295,7 +307,7 @@ FOUNDATION_STATIC void console_render_toolbar()
     static const float button_frame_padding = IM_SCALEF(8.0f);
     ImGui::BeginGroup();
     ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - clear_button_width - button_frame_padding);
-    if (ImGui::InputTextWithHint("##SearchLog", "Search logs...", STRING_BUFFER(_console_module->search_filter)))
+    if (ImGui::InputTextWithHint("##SearchLog", tr("Search logs..."), STRING_BUFFER(_console_module->search_filter)))
     {
         _console_module->filtered_message_count = 0;
         const size_t filter_length = string_length(_console_module->search_filter);
@@ -386,18 +398,76 @@ FOUNDATION_STATIC void console_render_evaluator()
 
     if (evaluate)
     {
-        string_const_t expression_string = string_const(_console_module->expression_buffer, string_length(_console_module->expression_buffer));
-        if (!_console_module->saved_expressions.includes<string_const_t>(L2(string_equal_ignore_whitespace(STRING_ARGS(_1), STRING_ARGS(_2))), expression_string))
+        string_t expression_string = string_clone(_console_module->expression_buffer, string_length(_console_module->expression_buffer));
+        if (!_console_module->saved_expressions.includes<string_t>(L2(string_equal_ignore_whitespace(STRING_ARGS(_1), STRING_ARGS(_2))), expression_string))
             _console_module->saved_expressions.push(string_clone(STRING_ARGS(expression_string)));
 
-        session_set_string("console_expression", STRING_ARGS(expression_string));        
+        session_set_string("console_expression", STRING_ARGS(expression_string));
 
-        expr_result_t result = eval(expression_string);
+        // Remove all comments starting with # or // from the expression on each line
+        char* line_start = expression_string.str;
+        char* line_end = expression_string.str;
+        while (line_end)
+        {
+            size_t line_start_offset = line_start - expression_string.str;
+            size_t line_end_pos = string_find(STRING_ARGS(expression_string), '\n', line_start_offset);
+            if (line_end_pos != STRING_NPOS)
+            {
+                size_t comment_start_pos = string_find(STRING_ARGS(expression_string), '#', line_start_offset);
+                if (comment_start_pos == STRING_NPOS || comment_start_pos > line_start_offset)
+                    comment_start_pos = string_find_string(STRING_ARGS(expression_string), STRING_CONST("//"), line_start_offset);
+                if (comment_start_pos != STRING_NPOS && comment_start_pos < line_end_pos)
+                {
+                    memmove(expression_string.str + comment_start_pos, expression_string.str + line_end_pos, expression_string.length - line_end_pos);
+                    expression_string.length -= line_end_pos - comment_start_pos;
+                    line_end = expression_string.str + comment_start_pos;
+                }
+                else
+                {
+                    line_end = expression_string.str + line_end_pos;
+                }
+
+                line_start = line_end + 1;
+            }
+            else
+            {
+                line_end = 0;
+                expression_string.str[expression_string.length] = 0;
+            }
+        }
+
+        // Remove empty lines
+        line_start = expression_string.str;
+        line_end = expression_string.str;
+        while (line_end)
+        {
+            size_t line_start_offset = line_start - expression_string.str;
+            size_t line_end_pos = string_find(STRING_ARGS(expression_string), '\n', line_start_offset);
+            if (line_end_pos != STRING_NPOS)
+            {
+                if (line_end_pos == line_start_offset)
+                {
+                    memmove(expression_string.str + line_start_offset, expression_string.str + line_end_pos + 1, expression_string.length - line_end_pos);
+                    expression_string.length -= line_end_pos - line_start_offset + 1;
+                    line_end = expression_string.str + line_start_offset;
+                }
+                else
+                {
+                    line_end = expression_string.str + line_end_pos;
+                }
+                line_start = line_end + 1;
+            }
+            else
+            {
+                line_end = 0;
+                expression_string.str[expression_string.length] = 0;
+            }
+        }
+
+        expr_result_t result = eval(string_to_const(expression_string));
         if (EXPR_ERROR_CODE == 0)
         {
-            //_console_concat_messages = true;
-            expr_log_evaluation_result(expression_string, result);
-            //_console_concat_messages = false;
+            expr_log_evaluation_result(string_to_const(expression_string), result);
         }
         else if (EXPR_ERROR_CODE != 0)
         {
@@ -406,6 +476,8 @@ FOUNDATION_STATIC void console_render_evaluator()
         }
 
         focus_text_field = true;
+
+        string_deallocate(expression_string.str);
     }
 }
 
@@ -453,6 +525,16 @@ FOUNDATION_STATIC void console_module_ensure_initialized()
     {
         _console_module = MEM_NEW(HASH_CONSOLE, CONSOLE_MODULE);
         _console_module->lock = mutex_allocate(STRING_CONST("console_lock"));
+        
+        string_const_t log_path = session_get_user_file_path(STRING_CONST("log.txt"));
+        if (fs_is_file(STRING_ARGS(log_path)))
+        {
+            // Move log file to prev_log.txt
+            string_const_t prev_log_path = session_get_user_file_path(STRING_CONST("prev_log.txt"));
+            fs_move_file(STRING_ARGS(log_path), STRING_ARGS(prev_log_path));
+        }
+        
+        _console_module->log_stream = stream_open(STRING_ARGS(log_path), STREAM_OUT | STREAM_CREATE | STREAM_TRUNCATE | STREAM_SYNC);
     }
 }
 
@@ -546,6 +628,12 @@ FOUNDATION_STATIC void console_shutdown()
 
     string_table_deallocate(_console_module->strings);
     string_array_deallocate(_console_module->secret_keys);
+
+    if (_console_module->log_stream)
+    {
+        stream_deallocate(_console_module->log_stream);
+        _console_module->log_stream = nullptr;
+    }
 
     MEM_DELETE(_console_module);
 }

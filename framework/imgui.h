@@ -36,6 +36,7 @@ static const ImU32 BACKGROUND_SOLD_COLOR = ImColor::HSV(226 / 360.0f, 0.45f, 0.5
 static const ImU32 BACKGROUND_INDX_COLOR = ImColor::HSV(220 / 360.0f, 0.20f, 0.51f);
 static const ImU32 BACKGROUND_LIGHT_TEXT_COLOR = ImColor::HSV(40 / 360.0f, 0.05f, 0.10f);
 static const ImU32 BACKGROUND_DARK_TEXT_COLOR = ImColor::HSV(40 / 360.0f, 0.05f, 1.0f);
+static const ImU32 BACKGROUND_NEW_ROW_COLOR = ImColor::HSV(227 / 360.0f, 0.20f, 0.71f);
 static const ImU32 BACKGROUND_HIGHLIGHT_COLOR = ImColor::HSV(227 / 360.0f, 0.20f, 0.51f);
 static const ImU32 BACKGROUND_GOOD_COLOR = ImColor::HSV(100 / 360.0f, 0.99f, 0.70f); // hsv(99, 91%, 69%)
 static const ImU32 BACKGROUND_WARN_COLOR = ImColor::HSV(13 / 360.0f, 0.89f, 0.51f); // hsv(13, 89%, 51%)
@@ -216,6 +217,16 @@ float imgui_get_font_ui_scale(float value = 1.0f);
  *  @return The scaled value.
  */
 #define IM_SCALEF(value) imgui_get_font_ui_scale((float)(value))
+
+/*! @def IM_SCALEV
+ * 
+ *  Returns a vector scaled with the global UI scaling factor.
+ * 
+ *  @param x The x value to scale.
+ *  @param y The y value to scale.
+ *  @return The scaled vector.
+ */
+#define IM_SCALEV(x, y) { IM_SCALEF(x), IM_SCALEF(y) }
 
 /*! Sets the global UI scaling factor.
  *
@@ -429,6 +440,19 @@ namespace ImGui
         va_end(args);
     }
 
+    FOUNDATION_FORCEINLINE void TrTooltip(const char* fmt, ...)
+    {
+        va_list args;
+        va_start(args, fmt);
+        #if BUILD_ENABLE_LOCALIZATION
+        string_const_t fmtstr = tr(fmt, string_length(fmt), false);
+        SetTooltipV(fmtstr.str, args);
+        #else
+        SetTooltipV(fmt, args);
+        #endif
+        va_end(args);
+    }
+
     /*! Draw an unformatted text label with translated text. 
      * 
      *  @param fmt The format string.
@@ -525,5 +549,14 @@ namespace ImGui
         const ImVec2 center = ImVec2(pos.x + avail.x * 0.5f, pos.y + avail.y * 0.5f);
         ImGui::SetCursorPos(center - size * 0.5f);
         return ImGui::ButtonEx(label, size, ImGuiButtonFlags_AlignTextBaseLine);
+    }
+
+    /*! Check if we are currently editing an item. i.e. a TextInput field. 
+     * 
+     *  @return True if we are editing an item.
+     */
+    FOUNDATION_FORCEINLINE bool IsEditingItem()
+    {
+        return ImGui::GetIO().WantTextInput;
     }
 }

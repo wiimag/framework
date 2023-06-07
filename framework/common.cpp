@@ -97,12 +97,15 @@ string_const_t url_encode(const char* str, size_t str_length)
     string_t buf = string_static_buffer((str_length > 0 ? str_length : string_length(str)) * 3 + 1);
     char* pbuf = buf.str;
     while (*pstr) {
-        if (*pstr < 0 || isalnum(*pstr) || *pstr == '-' || *pstr == '_' || *pstr == '.' || *pstr == '~')
-            *pbuf++ = *pstr;
-        else if (*pstr == ' ')
-            *pbuf++ = '%', * pbuf++ = '2', * pbuf++ = '0';
+        char c = *pstr;
+        if (c > 0 && isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~')
+            *pbuf++ = c;
+        else if (c == ' ')
+            *pbuf++ = '%', *pbuf++ = '2', * pbuf++ = '0';
         else
-            *pbuf++ = '%', * pbuf++ = to_hex(*pstr >> 4), * pbuf++ = to_hex(*pstr & 15);
+        {
+            pbuf += string_format(pbuf, buf.length - pointer_diff(pbuf, buf.str), STRING_CONST("%%%02X"), (unsigned char)c).length;
+        }
         pstr++;
     }
     *pbuf = '\0';
@@ -252,6 +255,36 @@ FOUNDATION_STATIC bool environment_command_line_read_value(
     return false;
 }
 
+string_const_t environment_username()
+{
+    static char username_buffer[32] = { 0 };
+
+    if (username_buffer[0] != 0)
+        return string_to_const(username_buffer);
+
+    string_const_t username = environment_variable(STRING_CONST("USERNAME"));
+    if (username.length)
+    {
+        string_copy(STRING_BUFFER(username_buffer), STRING_ARGS(username));
+        return string_to_const(username_buffer);
+    }
+    
+    string_const_t app_dir = environment_application_directory();
+    #if FOUNDATION_PLATFORM_WINDOWS
+    string_const_t user_dir = path_directory_name(STRING_ARGS(app_dir));
+    user_dir = path_directory_name(STRING_ARGS(user_dir));
+    user_dir = path_directory_name(STRING_ARGS(user_dir));
+    user_dir = path_directory_name(STRING_ARGS(user_dir));
+    username = path_base_file_name(STRING_ARGS(user_dir));
+
+    string_copy(STRING_BUFFER(username_buffer), STRING_ARGS(username));
+    #else
+    string_copy(STRING_BUFFER(username_buffer), STRING_CONST("OSX"));
+    #endif
+
+    return string_to_const(username_buffer);
+}
+
 bool environment_argument(string_const_t name, string_const_t* value, bool check_environment_variable)
 {
     name = environment_command_line_trim_param(name);
@@ -349,7 +382,7 @@ bool time_is_working_hours()
         return false;
 
     const int hour = tm_now.tm_hour;
-    return (hour >= 10) && (hour < 16);
+    return (hour >= 9) && (hour < 17);
 }
 
 string_t path_normalize_name(char* buff, size_t capacity, const char* _path, size_t path_length, const char replacement_char /*= '_'*/)

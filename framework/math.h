@@ -26,6 +26,7 @@ typedef struct vec2_t
     FOUNDATION_FORCEINLINE vec2_t(float s) : x(s), y(s) {}
     FOUNDATION_FORCEINLINE vec2_t(int x, int y) : x((float)x), y((float)y) {}
     FOUNDATION_FORCEINLINE vec2_t(float x, float y) : x(x), y(y) {}
+    FOUNDATION_FORCEINLINE vec2_t(double x, double y) : x((double)x), y((double)y) {}
     FOUNDATION_FORCEINLINE vec2_t(const ImVec2& iv2) : xy(iv2) {}
     FOUNDATION_FORCEINLINE vec2_t(const bx::Vec3& bxv3) : x(bxv3.x), y(bxv3.y) {}
     FOUNDATION_FORCEINLINE vec2_t(const float* p, unsigned length = UINT_MAX) : x(p[0]), y(length > 1 ? p[1] : 0) {}
@@ -66,6 +67,7 @@ typedef struct vec3_t
     FOUNDATION_FORCEINLINE vec3_t(float x, float y, float z) : x(x), y(y), z(z) {}
     FOUNDATION_FORCEINLINE vec3_t(const vec2_t& v2) : x(v2.x), y(v2.y), z(0) {}
     FOUNDATION_FORCEINLINE vec3_t(const ImVec2& iv2) : x(iv2.x), y(iv2.y), z(0) {}
+    FOUNDATION_FORCEINLINE vec3_t(const ImPlotPoint& iv2) : x(iv2.x), y(iv2.y), z(0) {}
     FOUNDATION_FORCEINLINE vec3_t(const bx::Vec3& bxv3) : x(bxv3.x), y(bxv3.y), z(bxv3.z) {}
     FOUNDATION_FORCEINLINE vec3_t(const float* p, unsigned length = UINT_MAX) : x(p[0]), y(length > 1 ? p[1] : 0), z(length > 2 ? p[2] : 0) {}
 
@@ -268,6 +270,15 @@ FOUNDATION_FORCEINLINE double math_ifneg(const double n, const double default_va
     return n;
 }
 
+/*! @brief Returns true if the real number is non zero and a finite number.
+ *  @param n The value to check.
+ *  @return True if the real number is non zero and a finite number.
+ */
+FOUNDATION_FORCEINLINE bool math_real_is_finite_nz(const double n)
+{
+    return !math_real_is_zero(n) && math_real_is_finite(n);
+}
+
 /*! @brief Returns the average of the given values.
  *  @param pn Pointer to the first value.
  *  @param count Number of values.
@@ -283,6 +294,21 @@ double math_average(const double* pn, size_t count, size_t stride = sizeof(doubl
  *  @return The median of the given values.
 */
 double math_median_average(double* values, double& median, double& average);
+
+/*! Compute the relative change between two values.
+ *  @param from The original value.
+ *  @param to The new value.
+ *  @return The relative change between the two values.
+ */
+FOUNDATION_FORCEINLINE double math_change_p(double from, double to, double default_value = 0.0)
+{
+    return !math_real_is_zero(from) ? (to - from) / from : default_value;
+}
+
+FOUNDATION_FORCEINLINE int math_round(double value, int at)
+{
+    return math_round(value / at) * at;
+}
 
 // ## Scalar helpers
 

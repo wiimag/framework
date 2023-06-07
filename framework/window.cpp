@@ -7,6 +7,7 @@
 
 #if BUILD_APPLICATION
 
+#include <framework/app.h>
 #include <framework/glfw.h>
 #include <framework/bgfx.h>
 #include <framework/imgui.h>
@@ -132,6 +133,8 @@ static struct WINDOW_MODULE {
 
     window_t** windows{ nullptr };
 
+    window_handle_t current_window{ 0 };
+
     config_handle_t configs;
     
 } *_window_module;
@@ -183,10 +186,11 @@ FOUNDATION_STATIC window_t* window_allocate(GLFWwindow* glfw_window, window_flag
 
 FOUNDATION_STATIC void window_bgfx_invalidate_device_objects(window_t* win)
 {
-    if (bgfx::isValid(win->bgfx_imgui_attrib_location_tex))
-        bgfx::destroy(win->bgfx_imgui_attrib_location_tex);
     if (bgfx::isValid(win->bgfx_imgui_shader_handle))
         bgfx::destroy(win->bgfx_imgui_shader_handle);
+
+    if (bgfx::isValid(win->bgfx_imgui_attrib_location_tex))
+        bgfx::destroy(win->bgfx_imgui_attrib_location_tex);
 
     if (bgfx::isValid(win->bgfx_imgui_font_texture))
     {
@@ -209,8 +213,7 @@ FOUNDATION_STATIC void window_restore_settings(window_t* win, config_handle_t co
 
 FOUNDATION_STATIC string_const_t window_get_imgui_save_path(window_t* win)
 {
-    char normalized_window_id_buffer[BUILD_MAX_PATHLEN];
-    string_t normalized_window_id = path_normalize_name(normalized_window_id_buffer, sizeof(normalized_window_id_buffer), STRING_ARGS(win->id));
+    string_t normalized_window_id = path_normalize_name(SHARED_BUFFER(BUILD_MAX_PATHLEN), STRING_ARGS(win->id));
     string_const_t window_imgui_save_path = session_get_user_file_path(
         STRING_ARGS(normalized_window_id),
         STRING_CONST("imgui"),
@@ -850,6 +853,25 @@ FOUNDATION_STATIC void window_render(window_t* win)
     if (glfwGetWindowAttrib(win->glfw_window, GLFW_ICONIFIED))
         return;
 
+    if (glfwGetWindowAttrib(win->glfw_window, GLFW_VISIBLE) == 0)
+    {
+        // Window is not visible, but not iconified either
+        // This happens when the window is minimized on Windows
+
+        log_warnf(0, WARNING_SUSPICIOUS, STRING_CONST("Window %.*s is not visible, but not iconified either"), STRING_FORMAT(win->id));
+        return;
+    }
+
+    if (glfwWindowShouldClose(win->glfw_window))
+        return;
+
+    if (win->frame_width <= 0 || win->frame_height <= 0)
+    {
+        log_warnf(0, WARNING_SUSPICIOUS, STRING_CONST("Window %.*s has invalid frame size (%dx%d)"),
+                         STRING_FORMAT(win->id), win->frame_width, win->frame_height);
+        return;
+    }
+
     // Prepare next frame
     window_bgfx_new_frame(win);
     window_imgui_new_frame(win);
@@ -907,6 +929,7 @@ FOUNDATION_STATIC void window_render(window_t* win)
 
         win->render.invoke(win->handle);
 
+        app_dialogs_render();
 
     } ImGui::End();
 
@@ -933,6 +956,11 @@ bool window_valid(window_handle_t window_handle)
     return window_handle_lookup(window_handle) != nullptr;
 }
 
+window_handle_t window_current()
+{
+    return _window_module->current_window;
+}
+
 void window_update()
 {
     const unsigned window_count = array_size(_window_module->windows);
@@ -954,15 +982,21 @@ void window_update()
 
         window_prepare(win);
 
+        _window_module->current_window = win->handle;
+
         exception_try([](void* args)
         {
             window_t* win = (window_t*)args;
             window_render(win);
             return 0;
-        }, win, [](const char* file, size_t length)
+        }, win, [](void* args, const char* file, size_t length)
         {
+            window_t* win = (window_t*)args;
             log_errorf(HASH_WINDOW, ERROR_EXCEPTION, "Exception in window render: %.*s", (int)length, file);
+            window_close(win->handle);
         }, STRING_CONST("window_dump"));
+
+        _window_module->current_window = 0;
         
         // Check if the window should be closed
         GLFWwindow* glfw_window = win->glfw_window;
@@ -985,6 +1019,14 @@ void* window_get_user_data(window_handle_t window_handle)
     if (window == nullptr)
         return nullptr;
     return window->user_data;
+}
+
+void window_set_user_data(window_handle_t window_handle, void* user_data)
+{
+    window_t* window = window_handle_lookup(window_handle);
+    if (window == nullptr)
+        return;
+    window->user_data = user_data;
 }
 
 const char* window_title(window_handle_t window_handle)
@@ -1064,6 +1106,14 @@ FOUNDATION_STATIC GLFWwindow* window_create(const char* window_title, size_t win
     GLFWmonitor* monitor = glfw_find_window_monitor(window_x, window_y);
     if (monitor == glfwGetPrimaryMonitor())
         glfwWindowHint(GLFW_MAXIMIZED, window_maximized ? GLFW_TRUE : GLFW_FALSE);
+
+    // Make sure the window is not outside the monitor work area
+    int mposx, mposy, mwidth, mheight;
+    glfwGetMonitorWorkarea(monitor, &mposx, &mposy, &mwidth, &mheight);
+    if (window_x < mposx || window_x > mposx + mwidth)
+        window_x = mposx;
+    if (window_y < mposy || window_y > mposy + mheight)
+        window_y = mposy;
 
     float scale_x = 1.0f, scale_y = 1.0f;
     #if FOUNDATION_PLATFORM_WINDOWS
@@ -1178,7 +1228,14 @@ void window_close(window_handle_t window_handle)
     FOUNDATION_ASSERT(window);
     
     if (window->glfw_window)
-        glfw_request_close_window(window->glfw_window);
+    {
+        dispatch([window_handle]()
+        {
+            window_t* window = window_handle_lookup(window_handle);
+			if (window->glfw_window)
+	            glfw_request_close_window(window->glfw_window);
+        });
+    }
 }
 
 bool window_focus(window_handle_t window_handle)
@@ -1277,6 +1334,9 @@ void window_menu()
 FOUNDATION_STATIC void window_initialize()
 {
     _window_module = MEM_NEW(HASH_WINDOW, WINDOW_MODULE);
+
+    if (!main_is_interactive_mode())
+        return;
 
     string_const_t window_config_file_path = session_get_user_file_path(STRING_CONST("windows.json"));
     _window_module->configs = config_parse_file(STRING_ARGS(window_config_file_path), CONFIG_OPTION_PRESERVE_INSERTION_ORDER);

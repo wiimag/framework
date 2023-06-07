@@ -400,7 +400,7 @@ dispatcher_thread_handle_t dispatch_thread(
         
         void* result_ptr = dt->thread_fn.invoke(dt->payload);
         
-        if (objectmap_release(_dispatcher_threads, dispatcher_thread_handle, dispatch_execute_thread_completed))
+        if (_dispatcher_threads && objectmap_release(_dispatcher_threads, dispatcher_thread_handle, dispatch_execute_thread_completed))
         {
             dispatcher_wakeup_main_thread();
 
@@ -434,6 +434,22 @@ bool dispatcher_thread_is_running(dispatcher_thread_handle_t thread_handle)
     bool running = thread_is_running(dt->thread);
     objectmap_release(_dispatcher_threads, thread_handle, dispatch_execute_thread_completed);
     return running;
+}
+
+bool dispatcher_thread_signal(dispatcher_thread_handle_t thread_handle)
+{
+    dispatcher_thread_t* dt = (dispatcher_thread_t*)objectmap_acquire(_dispatcher_threads, thread_handle);
+    if (dt)
+    {
+        thread_signal(dt->thread);
+        return objectmap_release(_dispatcher_threads, thread_handle, nullptr);
+    }
+    else
+    {
+        log_warnf(0, WARNING_INVALID_VALUE, STRING_CONST("Invalid thread handle or thread was already stopped"));
+    }
+    
+    return false;
 }
 
 bool dispatcher_thread_stop(dispatcher_thread_handle_t thread_handle, double timeout_seconds /*= 30.0*/)

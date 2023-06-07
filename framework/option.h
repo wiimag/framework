@@ -72,7 +72,7 @@ struct option_t
         return *this;
     }
 
-    O& operator=(O&& o)
+    O& operator=(O&& o) noexcept
     {
         if (this == &o)
             return *this;
@@ -116,20 +116,18 @@ struct option_t
     }
 };
 
-#if FOUNDATION_PLATFORM_WINDOWS
-typedef option_t<double, __builtin_nan("0")> double_option_t;
-#else
+constexpr double DOUBLE_OPTION_DEFAULT_VALUE = __builtin_nan("0");
 struct double_option_t
 {
     typedef double T;
     typedef double_option_t O;
     typedef function<bool(T& out_value)> fetcher_handler_t;
 
-    mutable T value{ __builtin_nan("0") };
+    mutable T value{ DOUBLE_OPTION_DEFAULT_VALUE };
     mutable bool initialized{ false };
     fetcher_handler_t fetcher;
 
-    double_option_t(T d = __builtin_nan("0"))
+    double_option_t(T d = DOUBLE_OPTION_DEFAULT_VALUE)
         : value(d)
         , initialized(false)
         , fetcher(nullptr)
@@ -143,12 +141,12 @@ struct double_option_t
     {
     }
 
-    double_option_t(O&& o)
+    double_option_t(O&& o) noexcept
         : value(o.value)
         , initialized(o.initialized)
     {
         fetcher = std::move(o.fetcher);
-        o.value = __builtin_nan("0");
+        o.value = DOUBLE_OPTION_DEFAULT_VALUE;
         o.initialized = false;
     }
 
@@ -181,7 +179,7 @@ struct double_option_t
         return *this;
     }
 
-    O& operator=(O&& o)
+    O& operator=(O&& o) noexcept
     {
         if (this == &o)
             return *this;
@@ -190,13 +188,24 @@ struct double_option_t
         initialized = o.initialized;
         fetcher = std::move(o.fetcher);
 
-        o.value = __builtin_nan("0");
+        o.value = DOUBLE_OPTION_DEFAULT_VALUE;
         o.initialized = false;
         o.fetcher = nullptr;
         return *this;
     }
 
-    T get_or_default(T dv = __builtin_nan("0")) const
+    bool try_get(double& out_value) const
+    {
+        if (initialized)
+        {
+            out_value = value;
+            return true;
+        }
+
+        return false;
+    }
+
+    T get_or_default(T dv = DOUBLE_OPTION_DEFAULT_VALUE) const
     {
         if (initialized)
             return value;
@@ -212,7 +221,7 @@ struct double_option_t
             return get_or_default(value);
 
         if (!fetcher(value))
-            return __builtin_nan("0");
+            return DOUBLE_OPTION_DEFAULT_VALUE;
 
         initialized = true;
         return value;
@@ -224,5 +233,5 @@ struct double_option_t
         fetcher = handler;
     }
 };
-#endif
+
 typedef option_t<string_table_symbol_t, STRING_TABLE_NULL_SYMBOL> string_option_t;

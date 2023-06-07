@@ -61,7 +61,7 @@ const char* tr_cstr(const char* str, size_t length = SIZE_MAX);
 
 #define RTEXT(str) CTEXT(str)
 
-FOUNDATION_FORCEINLINE const char* tr(const char* str, size_t length, bool literal = false) 
+FOUNDATION_FORCEINLINE string_const_t tr(const char* str, size_t length, bool literal = false) 
 { 
     return string_const(str, length); 
 }
@@ -150,7 +150,6 @@ FOUNDATION_FORCEINLINE const char* tr_format(const char* fmt, Args&&... args)
  */
 string_const_t localization_current_language();
 
-
 /*! Returns the current language name. (i.e. "English", "Fran\xC3\xA7ais", etc.)
  * 
  *  @return Current language name.
@@ -187,4 +186,75 @@ string_const_t localization_language_name(unsigned int index);
  */
 bool localization_set_current_language(const char* lang, size_t lang_length);
 
+/*! Converts a timestamp to the application locales.
+ * 
+ *  @param buffer Buffer to store the result.
+ *  @param capacity Capacity of the buffer.
+ *  @param time Timestamp to convert.
+ *  @param since If true, the string will indicate how much time since the given timestamp.
+ * 
+ *  @return Localized string.
+ */
+string_t localization_string_from_time(char* buffer, size_t capacity, tick_t time, bool since = false);
+
+#else
+
+#define localization_current_language() string_const(STRING_CONST("en"))
+#define localization_current_language_name() string_const(STRING_CONST("English"))
+#define localization_supported_language_count() 1
+#define localization_language_code(index) string_const(STRING_CONST("en"))
+#define localization_language_name(index) string_const(STRING_CONST("English"))
+#define localization_set_current_language(lang, lang_length) false
+
+FOUNDATION_FORCEINLINE string_t localization_string_from_time(char* buffer, size_t capacity, tick_t time, bool since = false)
+{
+    FOUNDATION_UNUSED(since);
+    return string_from_time(buffer, capacity, time, true);
+}
+
 #endif
+
+/*! Log a translated informative message.
+ * 
+ *  @param context Context of the message.
+ *  @param fmt Format string.
+ *  @param ... Format arguments.
+ */
+template<size_t N, typename... Args>
+void tr_info(hash_t context, const char(&fmt)[N], Args&&... args)
+{
+    string_const_t fmttr = tr(fmt, N-1, true);
+    string_t lstr = string_allocate_template(STRING_ARGS(fmttr), std::forward<Args>(args)...);
+    log_info(context, STRING_ARGS(lstr));
+    string_deallocate(lstr.str);
+}
+
+/*! Log a translated warning message.
+ * 
+ *  @param context Context of the message.
+ *  @param fmt Format string.
+ *  @param ... Format arguments.
+ */
+template<size_t N, typename... Args>
+void tr_warn(hash_t context, warning_t warn, const char(&fmt)[N], Args&&... args)
+{
+    string_const_t fmttr = tr(fmt, N-1, true);
+    string_t lstr = string_allocate_template(STRING_ARGS(fmttr), std::forward<Args>(args)...);
+    log_warn(context, warn, STRING_ARGS(lstr));
+    string_deallocate(lstr.str);
+}
+
+/*! Log a translated error message.
+ * 
+ *  @param context Context of the message.
+ *  @param fmt Format string.
+ *  @param ... Format arguments.
+ */
+template<size_t N, typename... Args>
+void tr_error(hash_t context, error_t err, const char(&fmt)[N], Args&&... args)
+{
+    string_const_t fmttr = tr(fmt, N-1, true);
+    string_t lstr = string_allocate_template(STRING_ARGS(fmttr), std::forward<Args>(args)...);
+    log_error(context, err, STRING_ARGS(lstr));
+    string_deallocate(lstr.str);
+}

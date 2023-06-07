@@ -5,6 +5,9 @@
 
 #pragma once
 
+#include <framework/string.h>
+#include <framework/common.h>
+
 #include <foundation/json.h>
 #include <foundation/array.h>
 #include <foundation/string.h>
@@ -252,7 +255,7 @@ struct json_object_t
         return get(STRING_ARGS(field_name));
     }
 
-    FOUNDATION_FORCEINLINE double as_number(double default_value = NAN) const
+    FOUNDATION_FORCEINLINE double as_number(double default_value = DNAN) const
     {
         return json_read_number(buffer, tokens, root, default_value);
     }
@@ -262,8 +265,15 @@ struct json_object_t
         return math_trunc(json_read_number(buffer, tokens, root, (double)default_value));
     }
 
-    FOUNDATION_FORCEINLINE int as_time(time_t default_value = 0) const
+    FOUNDATION_FORCEINLINE time_t as_time(time_t default_value = 0) const
     {
+        if (root->type == JSON_STRING)
+        {
+            string_const_t value = as_string();
+            if (value.length >= 10)
+                return string_to_date(value.str, value.length);
+        }
+
         return (time_t)json_read_number(buffer, tokens, root, (double)default_value);
     }
 
