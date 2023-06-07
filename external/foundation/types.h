@@ -743,6 +743,7 @@ typedef int (*exception_try_fn)(void* arg);
 
 /*! Exception handler function prototype, used to notify that an exception occurred
 and the process state was saved to a dump file
+\param arg Implementation specific argument passed to exception_try
 \param file Dump file path
 \param length Length of file path */
 typedef void (*exception_handler_fn)(void* arg, const char* file, size_t length);
