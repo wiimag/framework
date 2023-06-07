@@ -94,11 +94,17 @@ thread local storage to ensure maximum portability across supported platforms */
 #define FOUNDATION_COMPILER_INTEL 0
 
 // =======================================
-#if BUILD_DEBUG
+#if BUILD_DEBUG && !defined(_PREFAST_)
 #define FOUNDATION_STATIC
 #else
 #define FOUNDATION_STATIC static
 #endif
+
+#ifdef _MSC_VER
+#pragma warning (push)
+#pragma warning (disable: 26497)
+#endif
+
 // =======================================
 
 // First, platforms and architectures
@@ -109,7 +115,7 @@ thread local storage to ensure maximum portability across supported platforms */
 #undef FOUNDATION_PLATFORM_ANDROID
 #define FOUNDATION_PLATFORM_ANDROID 1
 
-// Compatibile platforms
+// Compatible platforms
 #undef FOUNDATION_PLATFORM_POSIX
 #define FOUNDATION_PLATFORM_POSIX 1
 
@@ -200,7 +206,7 @@ thread local storage to ensure maximum portability across supported platforms */
 #undef FOUNDATION_PLATFORM_TIZEN
 #define FOUNDATION_PLATFORM_TIZEN 1
 
-// Compatibile platforms
+// Compatible platforms
 #undef FOUNDATION_PLATFORM_POSIX
 #define FOUNDATION_PLATFORM_POSIX 1
 
@@ -860,6 +866,11 @@ thread local storage to ensure maximum portability across supported platforms */
 #define FOUNDATION_FORCEINLINE __forceinline
 #define FOUNDATION_NOINLINE __declspec(noinline)
 #define FOUNDATION_PURECALL __declspec(noalias)
+#ifdef __cplusplus
+#define FOUNDATION_CONSTEXPR constexpr
+#else
+#define FOUNDATION_CONSTEXPR
+#endif
 #define FOUNDATION_CONSTCALL __declspec(noalias)
 #define FOUNDATION_PRINTFCALL(start, num)
 #define FOUNDATION_ALIGN(alignment) __declspec(align(alignment))
@@ -1089,6 +1100,10 @@ typedef volatile _Atomic(void*) atomicptr_t;
 #define STRING_BUFFER(s) (s), (sizeof((s))/sizeof((s[0])))
 #define STRING_LENGTH(s) (s), (string_length(s))
 #define STRING_ARGS_BUFFER(s, buf) (s).str, (s).length, (sizeof((buf))/sizeof((buf[0])))
+#define STRING_PARAM(name) const char* name, size_t name##_length
+#define STRING_PARAM_FORMAT(name) (int)name##_length, name
+#define STRING_PARAM_ARGS(name) name, name##_length
+#define STRING_PARAM_CONST(name) { name, name##_length }
 // =======================================
 // 
 // Misc
@@ -1412,6 +1427,10 @@ uint512_is_null(const uint512_t u0) {
 #define FOUNDATION_FLEXIBLE_ARRAY 0
 #else
 #define FOUNDATION_FLEXIBLE_ARRAY
+#endif
+
+#ifdef _MSC_VER
+#pragma warning (pop)
 #endif
 
 /*!
@@ -1796,7 +1815,7 @@ Expand to three arguments, string pointer, length and capacity, as in
 <code>s.str, s.length, s.length+1</code>
 
 \def STRING_FORMAT
-Expand to two arguments, legnth and string pointer, as in <code>(int)s.length, s.str</code>.
+Expand to two arguments, length and string pointer, as in <code>(int)s.length, s.str</code>.
 Useful when passing a string_t to a string format argument, for example
 <code>string_t mystr = ...; log_infof(0, STRING_CONST("Mystring: %.*s"), STRING_FORMAT(mystr));</code>
 

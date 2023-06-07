@@ -214,8 +214,10 @@ FOUNDATION_STATIC string_const_t search_database_format_word(const char* word, s
     }
 
     static thread_local char word_lower_buffer[SEARCH_INDEX_WORD_MAX_LENGTH];
+    #if BUILD_DEVELOPMENT
     if (word_length >= ARRAY_COUNT(word_lower_buffer))
         log_warnf(0, WARNING_INVALID_VALUE, STRING_CONST("Word too long, truncating to %u characters: %.*s"), SEARCH_INDEX_WORD_MAX_LENGTH, (int)word_length, word);
+    #endif
 
     string_t word_lower = lower_case_word ? 
         string_to_lower_utf8(STRING_BUFFER(word_lower_buffer), word, word_length) :
@@ -571,6 +573,20 @@ search_document_handle_t search_database_add_document(search_database_t* db, con
     document.timestamp = time_now();
 
     SHARED_WRITE_LOCK(db->mutex);
+
+    // Find removed slot if any
+    for (unsigned doc_index = 1, end = array_size(db->documents); doc_index < end; ++doc_index)
+    {
+        search_document_t& doc = db->documents[doc_index];
+        if (doc.type == SearchDocumentType::Removed)
+        {
+            doc = document;
+            db->dirty = true;
+            db->document_count++;
+            return doc_index;
+        }
+    }
+
     db->dirty = true;
     db->document_count++;
     array_push_memcpy(db->documents, &document);
@@ -1305,14 +1321,8 @@ bool search_database_save(search_database_t* db, stream_t* stream)
     return true;
 }
 
-bool search_database_remove_document(search_database_t* db, search_document_handle_t document)
+FOUNDATION_STATIC bool search_database_remove_document_nolock(search_database_t* db, search_document_handle_t document)
 {
-    FOUNDATION_ASSERT(db);
-    FOUNDATION_ASSERT(document < array_size(db->documents));
-    FOUNDATION_ASSERT(document != 0);
-
-    SHARED_WRITE_LOCK(db->mutex);
-
     bool document_removed = false;
     search_document_t* doc = &db->documents[document];
     if (doc->type == SearchDocumentType::Removed)
@@ -1369,10 +1379,12 @@ bool search_database_remove_document(search_database_t* db, search_document_hand
         if (index.document_count == 0)
         {
             const char* value = (int32_t)index.key.hash > 0 ? string_table_to_string(db->strings, (uint32_t)index.key.hash) : nullptr;
+            #if 0
             log_debugf(0, STRING_CONST("Deleting index %u (%d) -> %s:%s(%.lf)"), 
                 i, index.key.type, 
                 string_table_to_string(db->strings, (int32_t)index.key.crc),
                 value ? value : "NA", index.key.number);
+            #endif
             array_erase_ordered_safe(db->indexes, i);
             --i;
             --end;
@@ -1386,6 +1398,46 @@ bool search_database_remove_document(search_database_t* db, search_document_hand
     db->dirty |= document_removed;
     string_deallocate(doc->name);
     return document_removed;
+}
+
+bool search_database_remove_document(search_database_t* db, search_document_handle_t document)
+{
+    FOUNDATION_ASSERT(db);
+    FOUNDATION_ASSERT(document < array_size(db->documents));
+    FOUNDATION_ASSERT(document != 0);
+
+    SHARED_WRITE_LOCK(db->mutex);
+    return search_database_remove_document_nolock(db, document);
+}
+
+bool search_database_remove_old_documents(search_database_t* db, time_t reference, double timeout_seconds)
+{
+    FOUNDATION_ASSERT(db);
+    SHARED_WRITE_LOCK(db->mutex);
+
+    tick_t time = 0;
+    for (unsigned i = 1, end = array_size(db->documents); i < end; ++i)
+    {
+        if (time > 0 && timeout_seconds > 0 && time_elapsed(time) > timeout_seconds)
+            return false;
+
+        search_document_t& doc = db->documents[i];
+        if (doc.type == SearchDocumentType::Removed)
+            continue;
+
+        if (doc.timestamp < reference)
+        {
+            log_debugf(0, STRING_CONST("Removing old document: %.*s"), STRING_FORMAT(doc.name));
+            if (search_database_remove_document_nolock(db, i))
+            {
+                // Start the timer
+                if (time == 0)
+                    time = time_current();
+            }
+        }
+    }
+
+    return time > 0;
 }
 
 void search_database_print_stats(search_database_t* db)

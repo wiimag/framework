@@ -28,8 +28,7 @@ FULL_SOLUTION_DIR=$(convert_path_to_platform $(pwd)/$SOLUTION_DIR)
 #
 # Parse common command line arguments
 #
-unset POSITIONAL_ARGS
-RUN=1 # Indicate if the default build should be run at the end
+RUN=0 # Indicate if the default build should be run at the end
 BUILD=()
 BUILD_DEBUG=0
 BUILD_RELEASE=1
@@ -51,6 +50,7 @@ NO_COLOR=0
 NO=0
 YES=1
 COMMAND_COUNTER=0
+COMMAND_NAME_ARGS="START"
 
 # Check if project/.build is present, if not, then we need to generate the project
 # Also check if the project/.build/CMakeCache.txt is present, if not, then we need to generate the project
@@ -78,7 +78,7 @@ while [[ $# -gt 0 ]]; do
       # Update the command counter
       COMMAND_COUNTER=$((COMMAND_COUNTER+1))
       BUILD=($YES)
-      declare -g -n POSITIONAL_ARGS=BUILD
+      COMMAND_NAME_ARGS="BUILD"
       shift # past argument
 
       # The release argument is the default, but remove it if it was specified
@@ -101,7 +101,7 @@ while [[ $# -gt 0 ]]; do
     p|print)
       COMMAND_COUNTER=$((COMMAND_COUNTER+1))
       PRINT=($YES)
-      declare -g -n POSITIONAL_ARGS=PRINT
+      COMMAND_NAME_ARGS="PRINT"
       shift # past argument
 
       # The release argument is the default, but remove it if it was specified
@@ -113,13 +113,13 @@ while [[ $# -gt 0 ]]; do
     g|generate)
       COMMAND_COUNTER=$((COMMAND_COUNTER+1))
       GENERATE=($YES)
-      declare -g -n POSITIONAL_ARGS=GENERATE
+      COMMAND_NAME_ARGS="GENERATE"
       shift # past argument
       ;;  
     p|package)
       COMMAND_COUNTER=$((COMMAND_COUNTER+1))
       PACKAGE=($YES)
-      declare -g -n POSITIONAL_ARGS=PACKAGE
+      COMMAND_NAME_ARGS="PACKAGE"
       shift # past argument
       ;;
     o|open)
@@ -131,7 +131,9 @@ while [[ $# -gt 0 ]]; do
       if [ $# -ne 0 ] && ([ $1 == "workspace" ] || [ $1 == "w" ]); then
         
         # Always generate the project if we are opening the workspace
-        GENERATE=($GENERATE)
+        if [ ${#GENERATE[@]} -eq 0 ]; then
+          GENERATE=($YES)
+        fi
         OPEN_WORKSPACE=1
         shift
       fi
@@ -140,27 +142,42 @@ while [[ $# -gt 0 ]]; do
     t|tests)
       COMMAND_COUNTER=$((COMMAND_COUNTER+1))
       TESTS=($YES)
-      declare -g -n POSITIONAL_ARGS=TESTS
+      COMMAND_NAME_ARGS="TESTS"
       shift # past argument
       ;;
     d|diff)
       COMMAND_COUNTER=$((COMMAND_COUNTER+1))
       DIFF=($YES)
-      declare -g -n POSITIONAL_ARGS=DIFF
+      COMMAND_NAME_ARGS="DIFF"
       shift # past argument
       ;;
     s|start)
       COMMAND_COUNTER=$((COMMAND_COUNTER+1))
       START=($YES)
-      declare -g -n POSITIONAL_ARGS=START
+      COMMAND_NAME_ARGS="START"
       RUN=1
 
       shift # past argument
       ;;
     *)
 
-      if [ $POSITIONAL_ARGS ]; then
-        POSITIONAL_ARGS+=("$1") # Append to current command positional arguments
+      if [ $COMMAND_NAME_ARGS == "GENERATE" ]; then
+        GENERATE+=("$1")
+      elif [ $COMMAND_NAME_ARGS == "PACKAGE" ]; then
+        PACKAGE+=("$1")
+      elif [ $COMMAND_NAME_ARGS == "BUILD" ]; then
+        BUILD+=("$1")
+      elif [ $COMMAND_NAME_ARGS == "PRINT" ]; then
+        PRINT+=("$1")
+      elif [ $COMMAND_NAME_ARGS == "TESTS" ]; then
+        TESTS+=("$1")
+      elif [ $COMMAND_NAME_ARGS == "DIFF" ]; then
+        DIFF+=("$1")
+      elif [ $COMMAND_NAME_ARGS == "START" ]; then
+        if [ ${#START[@]} -eq 0 ]; then
+          START=($YES)
+        fi
+        START+=("$1")
       elif [ ${#START[@]} -eq 0 ]; then
         START=($YES $1)
       else
@@ -171,7 +188,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# If there is not arguments to ./run, then lets force start to be the default command
+# If there is no arguments to ./run, then lets force start to be the default command
 if [ $COMMAND_COUNTER -eq 0 ]; then
   if [ ${#START[@]} -eq 0 ]; then
     START=($YES)
@@ -284,9 +301,6 @@ if [ $VERBOSE -ge 1 ]; then
   echo "START: ${START[@]}"
   echo "HELP: $HELP"
   echo "VERBOSE: $VERBOSE"
-
-  # Echo positional args
-  echo "Positional arguments: ${POSITIONAL_ARGS[@]}"
 fi
 
 #
@@ -588,7 +602,7 @@ if [ $RUN -eq 1 ]; then
 
   ADDITIONAL_ARGS=("${START[@]:1}")
 
-  # If VERBOSE is defined, add it to POSITIONAL_ARGS
+  # If VERBOSE is defined, add it to ADDITIONAL_ARGS
   if [ $VERBOSE -eq 1 ]; then
     ADDITIONAL_ARGS=("${ADDITIONAL_ARGS[@]:0:0}" "--verbose" "${ADDITIONAL_ARGS[@]:0}")
   fi

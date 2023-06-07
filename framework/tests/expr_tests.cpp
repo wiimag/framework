@@ -12,6 +12,7 @@
 
 template<size_t N> FOUNDATION_FORCEINLINE expr_result_t test_expr_error(const char(&expr)[N], expr_error_code_t expected_error_code)
 {
+    INFO(doctest::String("Testing error "), doctest::String(expr, N-1), doctest::String(" ("), expected_error_code, doctest::String(")"));
     expr_result_t result = eval(expr, N - 1);
     CHECK_EQ(result.type, EXPR_RESULT_NULL);
     CHECK_EQ(EXPR_ERROR_CODE, expected_error_code);
@@ -22,6 +23,7 @@ template<size_t N> FOUNDATION_FORCEINLINE expr_result_t test_expr_error(const ch
 
 template<size_t N> FOUNDATION_FORCEINLINE expr_result_t test_expr(const char(&expr)[N], const std::initializer_list<double>& list)
 {
+    INFO(doctest::String("Testing set "), doctest::String(expr, N-1));
     expr_result_t result = eval(expr, N - 1);
     CHECK(result.is_set());
     CHECK_EQ(result.element_count(), list.size());
@@ -38,6 +40,7 @@ template<size_t N> FOUNDATION_FORCEINLINE expr_result_t test_expr(const char(&ex
 template<size_t N> FOUNDATION_FORCEINLINE expr_result_t test_expr(const char(&expr)[N], double expected)
 {
     expr_result_t result = eval(expr, N - 1);
+    INFO(doctest::String("Testing number "), doctest::String(expr, N-1));
     CHECK_EQ(result.type, EXPR_RESULT_NUMBER);
 
     if (math_real_is_finite(expected))
@@ -56,6 +59,7 @@ template<size_t N> FOUNDATION_FORCEINLINE expr_result_t test_expr(const char(&ex
 template<size_t N> FOUNDATION_FORCEINLINE expr_result_t test_expr(const char(&expr)[N], int32_t expected)
 {
     expr_result_t result = eval({expr, N - 1});
+    INFO(doctest::String("Testing integer "), doctest::String(expr, N-1));
 
     if (result.is_set())
         result = result.last();
@@ -70,6 +74,7 @@ template<size_t N> FOUNDATION_FORCEINLINE expr_result_t test_expr(const char(&ex
 
 template<size_t N> FOUNDATION_FORCEINLINE expr_result_t test_expr(const char(&expr)[N], std::nullptr_t)
 {
+    INFO(doctest::String("Testing null "), doctest::String(expr, N-1));
     expr_result_t result = eval(expr, N - 1);
     CHECK_EQ(result.type, EXPR_RESULT_NULL);
     return result;
@@ -77,6 +82,7 @@ template<size_t N> FOUNDATION_FORCEINLINE expr_result_t test_expr(const char(&ex
 
 template<size_t N> FOUNDATION_FORCEINLINE expr_result_t test_expr(const char(&expr)[N], bool expected)
 {
+    INFO(doctest::String("Testing boolean "), doctest::String(expr, N-1));
     expr_result_t result = eval(expr, N - 1);
     FOUNDATION_ASSERT(result.type == EXPR_RESULT_TRUE || result.type == EXPR_RESULT_FALSE || result.type == EXPR_RESULT_NULL || result.type == EXPR_RESULT_NUMBER);
     if (result.type == EXPR_RESULT_NUMBER)
@@ -196,7 +202,7 @@ TEST_SUITE("Expressions")
         test_expr("1||2&&3", 1);
 
         test_expr("1&&(3%0)", false);
-        test_expr("(3%0)&&1", NAN);
+        test_expr("(3%0)&&1", false);
         test_expr("1||(3%0)", 1);
         test_expr("(3%0)||1", 1);
     }
@@ -363,7 +369,7 @@ TEST_SUITE("Expressions")
         CHECK_EQ(eval("[true, false, false]").as_string(), CTEXT("[true, false, false]"));
         CHECK_EQ(eval("5+6").as_string(), CTEXT("11"));
         CHECK_EQ(eval("PI*2").as_string("%.2lf"), CTEXT("6.28"));
-        CHECK_EQ(eval("NIL").as_string(), CTEXT("nil"));
+        CHECK_EQ(eval("NIL").as_string(), CTEXT("NIL"));
 
         expr_register_function("ptr16u", [](const expr_func_t* f, vec_expr_t* args, void* c) ->expr_result_t 
         { 
@@ -387,7 +393,6 @@ TEST_SUITE("Expressions")
 
     TEST_CASE("as_number()")
     {
-        CHECK_EQ(test_expr("NIL", nullptr).as_number(0), 0);
         CHECK_EQ(eval("nil").as_number(), 0);
         CHECK_EQ(eval("null").as_number(), 0);
         CHECK_EQ(eval("invalid_should_return_default").as_number(42.0), 42.0);
@@ -884,7 +889,7 @@ TEST_SUITE("Expressions")
         test_expr_error("REDUCE(1, 1)", EXPR_ERROR_INVALID_ARGUMENT);
         test_expr_error("FILTER()", EXPR_ERROR_INVALID_ARGUMENT);
         test_expr_error("FILTER(1, 1)", EXPR_ERROR_INVALID_ARGUMENT);
-        test_expr_error("INDEX(1, 1)", EXPR_ERROR_INVALID_ARGUMENT);
+        test_expr_error("INDEX(1, 1)", EXPR_ERROR_EMPTY_SET);
         test_expr_error("INDEX([0, 1], nan)", EXPR_ERROR_INVALID_ARGUMENT);
         test_expr_error("MAP()", EXPR_ERROR_INVALID_ARGUMENT);
         test_expr_error("MAP(1, 1)", EXPR_ERROR_INVALID_ARGUMENT);

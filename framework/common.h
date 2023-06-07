@@ -54,7 +54,7 @@ constexpr double DNAN = __builtin_nan("0");
     FOUNDATION_FORCEINLINE bool test(const T a, const T b) { return (a & b) == b; } \
     FOUNDATION_FORCEINLINE bool any(const T a, const T b) { return (a & b) != 0; } \
     FOUNDATION_FORCEINLINE bool none(const T a, const T b) { return (a & b) == 0; } \
-    FOUNDATION_FORCEINLINE bool one(const T a, const T b) { const auto bits = ((std::underlying_type_t<T>)a & (std::underlying_type_t<T>)b); return bits && !(bits & (bits-1)); }
+    FOUNDATION_FORCEINLINE constexpr bool one(const T a, const T b) { const auto bits = ((std::underlying_type_t<T>)a & (std::underlying_type_t<T>)b); return bits && !(bits & (bits-1)); }
 
 ////////////////////////////////////////////////////////////////////////////
 // ## Generics
@@ -139,6 +139,28 @@ string_t path_normalize_name(char* buff, size_t capacity, const char* path, size
  *  @return Text in file
  */
 string_t fs_read_text(const char* path, size_t path_length);
+
+/*! Get last modification time (last write) in milliseconds since the epoch (UNIX time)
+ * 
+ *  @param path   File path
+ *
+ *  @return       File modification time, 0 if not an existing file 
+ */
+template<typename T> FOUNDATION_FORCEINLINE tick_t fs_last_modified(const T& path)
+{
+    return fs_last_modified(STRING_ARGS(path));
+}
+
+/*! Remove a file from disk.
+ *
+ *  @param path   File path
+ *
+ *  @return       True if file was removed, false if not
+ */
+template<typename T> FOUNDATION_FORCEINLINE bool fs_remove_file(const T& path)
+{
+    return fs_remove_file(STRING_ARGS(path));
+}
 
 /*! Clean the file name, removing any illegal chars.
  * 
@@ -315,7 +337,7 @@ FOUNDATION_FORCEINLINE constexpr time_t const time_one_day()
  *  
  *  @returns Tick count
  */
-FOUNDATION_FORCEINLINE tick_t time_to_tick(time_t time)
+FOUNDATION_FORCEINLINE FOUNDATION_CONSTEXPR tick_t time_to_tick(time_t time)
 {
     return (tick_t)time * 1000;
 }
@@ -445,6 +467,8 @@ FOUNDATION_FORCEINLINE bool environment_argument(const char(&name)[N])
     return environment_argument(name_str, nullptr, false);
 }
 
+string_const_t environment_username();
+
 ////////////////////////////////////////////////////////////////////////////
 // ## Main functions
 
@@ -569,7 +593,7 @@ FOUNDATION_FORCEINLINE uint32_t rgb_to_abgr(const uint32_t v, const uint8_t alph
 
 FOUNDATION_FORCEINLINE hash_t hash_combine(hash_t h1, hash_t h2)
 {
-    return h1 ^ (h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2));
+    return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 12) + (h1 >> 2));
 }
 
 FOUNDATION_FORCEINLINE hash_t hash_combine(hash_t h1, hash_t h2, hash_t h3)
@@ -583,3 +607,31 @@ FOUNDATION_FORCEINLINE hash_t hash_combine(hash_t h1, hash_t h2, hash_t h3, hash
 }
 
 
+////////////////////////////////////////////////////////////////////////////
+// ## Compile time templates method
+
+/*! Compile time template function to get next power of 2 of a given value. 
+ * 
+ *  @param VALUE Value to get next power of 2 of.
+ * 
+ *  @return Next power of 2 of VALUE.
+ */
+template<uint32_t VALUE> struct NextPowerOf2
+{
+	template<uint32_t N, uint32_t SHIFT = 0>
+	struct Calculate
+	{
+		static const uint32_t result = Calculate<N/2, SHIFT+1>::result;
+	};
+
+	template<uint32_t SHIFT>
+	struct Calculate<0, SHIFT>
+	{
+		static const uint32_t result = SHIFT;
+	};
+
+	static const uint32_t shift = Calculate<VALUE-1>::result;
+	static const uint32_t value = 1 << shift;
+};
+
+#define CPOW2(n) NextPowerOf2<n>::value

@@ -111,10 +111,30 @@ You can find more documentation about the application framework under [docs](doc
 
 The solution will be generated in the `projects/.build` folder.
 
+Note that currently the `./run` scripts only supports the `Visual Studio 2022` generator on Windows and the `Xcode` generator on MacOS. If you want to use another generator, you will have to use `cmake` directly. Here's a few examples for older versions of Visual Studio:
+
+#### Visual Studio 2019
+
+```bash
+cmake --no-warn-unused-cli -DBUILD_MAX_JOB_THREADS=4 -DBUILD_MAX_QUERY_THREADS=8 -S./ -B./projects/.build -G "Visual Studio 16 2019" -A x64
+```
+
+#### Xcode
+
+```bash
+cmake --no-warn-unused-cli -DBUILD_MAX_JOB_THREADS=4 -DBUILD_MAX_QUERY_THREADS=4 -S./ -B./projects/.build -G "Xcode"
+```
+
 ### Build Solution (In Release)
 
 ```
 ./run build
+```
+
+In case the `./run` script doesn't work, you can also use `cmake` directly:
+
+```bash
+cmake --build ./projects/.build --config Release --target wallet -j 10
 ```
 
 ### Build Solution In Debug
@@ -150,7 +170,7 @@ The solution will be generated in the `projects/.build` folder.
 ### Batch it all!
 
 ```bash
-./run generate build deploy tests open workspace start --verbose --console
+./run generate build release tests open workspace start --verbose --console
 ```
 
 This will generate the solution, build it, run the tests, open the workspace, and start the application (or course if everything went well!).

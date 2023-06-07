@@ -36,6 +36,31 @@ struct lines_t
     }
 };
 
+// ### Shared buffer ###
+
+/*! A ring buffer shared between threads.
+ *
+ * @tparam BUF_SIZE The size of the buffer (ideally must be a power of 2).
+ */
+template<size_t BUF_SIZE>
+struct SharedBuffer
+{
+    static const size_t RING_COUNT = 6;
+    static thread_local size_t index;
+    static thread_local char buffer[RING_COUNT][BUF_SIZE];
+};
+
+template<size_t BUF_SIZE> thread_local size_t SharedBuffer<BUF_SIZE>::index = 0;
+template<size_t BUF_SIZE> thread_local char SharedBuffer<BUF_SIZE>::buffer[RING_COUNT][BUF_SIZE] = { "", "", "", "", "", "" };
+
+/*! @def SHARED_BUFFER
+ * @brief A macro to declare a thread local shared buffer.
+ *
+ * @param capacity The capacity of the buffer. The capacity will be capped to the next power of 2.
+ */
+#define SHARED_BUFFER(capacity) \
+    SharedBuffer<CPOW2(capacity)>::buffer[(SharedBuffer<CPOW2(capacity)>::index++) % SharedBuffer<CPOW2(capacity)>::RING_COUNT], CPOW2(capacity)
+
 /*! Count the occurrences of a character in a string.
  *
  * @param str The string to search.
@@ -117,6 +142,18 @@ bool string_equal_ignore_whitespace(const char* lhs, size_t lhs_length, const ch
  * @return The number of bytes read from the string.
  */
 string_t string_utf8_unescape(const char* s, size_t length);
+
+/*! Converts UTF-8 character to their respective code. This function is not
+ * 100% compliant with the UTF-8 standard, but it is good enough for our
+ * purposes.
+ *
+ * @param buffer The buffer to write the string to.
+ * @param capacity The capacity of the buffer.
+ * @param str The string to convert.
+ * @param len The length of the string.
+ * @return The number of bytes read from the string.
+ */
+string_t string_utf8_unescape(char* buffer, size_t capacity, const char* s, size_t length);
 
 /*! Converts a time structure a string. The string is allocated 
  *  in a temporary static buffer and most be used as soon as possible. 
@@ -256,6 +293,9 @@ string_const_t string_remove_line_returns(char* buffer, size_t capacity, const c
 
 /*! Remove all line returns in a string. The string is allocated and must be freed.
  *
+ * If the returned string is null, i.e. {}, then it means the input string 
+ * must be used instead and no allocate was done.
+ *
  * @param str The string to remove the line returns from.
  * @param length The length of the string.
  * @return The string without line returns.
@@ -370,7 +410,7 @@ template <size_t N> FOUNDATION_FORCEINLINE constexpr string_const_t string_const
  * @param s The string to check.
  * @return True if the string is null, false otherwise.
  */
-FOUNDATION_FORCEINLINE bool string_is_null(string_const_t s)
+FOUNDATION_FORCEINLINE FOUNDATION_CONSTEXPR bool string_is_null(string_const_t s)
 {
     return s.str == nullptr || s.length == 0;
 }
@@ -413,7 +453,7 @@ FOUNDATION_FORCEINLINE bool string_equal(string_const_t lhs, string_t rhs)
  * @param s The string to check.
  * @return True if the string is null, false otherwise.
  */
-FOUNDATION_FORCEINLINE bool string_is_null(string_t s)
+FOUNDATION_FORCEINLINE FOUNDATION_CONSTEXPR bool string_is_null(string_t s)
 {
     return s.str == nullptr || s.length == 0;
 }
@@ -632,3 +672,30 @@ string_const_t string_remove_trailing_whitespaces(const char* str, size_t length
  */
 string_t string_escape_url(char* buffer, size_t capacity, const char* url, size_t url_length);
     
+/*! Parse version string with the format 0.0.0[.0] into a version_t struct.
+ *
+ * @param str The version string.
+ * @param length The length of the version string.
+ * @return The parsed version.
+ */
+version_t string_to_version_short(const char* str, size_t length);
+
+/*! Convert Unicode code point to UTF-8 string.
+ *
+ * @param buffer The buffer to write the UTF-8 string to.
+ * @param capacity The capacity of the buffer.
+ * @param code_point The code point to convert.
+ * @return The UTF-8 string.
+ */
+string_t string_utf8_from_code_point(char* buffer, size_t capacity, uint32_t code_point);
+
+/*! Convert Unicode code point to UTF-8 string.
+ *  The #code_point string is expected to be in the format U+XXXX. U+ is optional.
+ *
+ * @param buffer The buffer to write the UTF-8 string to.
+ * @param capacity The capacity of the buffer.
+ * @param code_point The code point to convert.
+ * @param length The length of the code point string.
+ * @return The UTF-8 string.
+ */
+string_t string_utf8_from_code_point(char* buffer, size_t capacity, const char* code_point, size_t length);

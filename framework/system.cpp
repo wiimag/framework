@@ -63,7 +63,7 @@ bool system_execute_command(const char* command)
         #endif
         char command_buffer[2048];
         snprintf(command_buffer, 2048, "%s \"%s\"", open_executable, command);
-        system(command);
+        system(command_buffer);
 
         return true;
     #endif
@@ -496,7 +496,7 @@ bool system_notification_push(const char* title, size_t title_length, const char
     }
 
     // Remove the notification icon from the system tray
-    //Shell_NotifyIconA(NIM_DELETE, &nid);
+    Shell_NotifyIconA(NIM_DELETE, &nid);
 
     return success != 0;
 #else

@@ -104,6 +104,15 @@ const char* window_title(window_handle_t window);
  */
 void* window_get_user_data(window_handle_t window);
 
+/*! Sets any user data associated with the window.
+ *
+ *  @important    The user data is NOT managed by the window system.
+ *
+ *  @param window The handle of the window.
+ *  @param user_data The user data associated with the window.
+ */
+void window_set_user_data(window_handle_t window, void* user_data);
+
 /*! Sets the window title. The title string gets copied into managed memory.
  *
  *  @param window_handle The handle of the window.
@@ -166,3 +175,12 @@ void window_update();
  *  @return              True if the window is valid, false otherwise.
  */
 bool window_valid(window_handle_t window_handle);
+
+/*! Returns the active window handle.
+ *
+ *  @note                The active window is the window that has focus.
+ *  @remark              If the window handle is null, you can assume that the main window is the active window.
+ *
+ *  @return              The active window handle.
+ */
+window_handle_t window_current();

@@ -2,8 +2,8 @@
 	images = []
 	strings = [
 		{
-			fr = "<racine>"
-			en = "<root>"
+			en = "English"
+			fr = "Fran\xc3\xa7ais"
 		}
 		{
 			hash = "315259d58df4971e"

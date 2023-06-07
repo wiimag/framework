@@ -59,19 +59,29 @@ void string_lines_finalize(lines_t& lines)
 
 string_t string_utf8_unescape(const char* s, size_t length)
 {
+    const size_t capacity = length * 4;
+    string_t utf8 = string_allocate(0, capacity);
+    return string_utf8_unescape(utf8.str, capacity, s, length);
+}
+
+string_t string_utf8_unescape(char* buffer, size_t capacity, const char* s, size_t length)
+{
     if (s == nullptr || length == 0)
         return string_t{ nullptr, 0 };
 
-    string_t utf8 = string_allocate(0, length * 4);
+    string_t utf8 = {buffer, 0};
     for (const char* c = s; *c && size_t(c - s) < length; ++c)
     {
+        if (utf8.length + 4 >= capacity)
+            break;
+
         if (*c != '\\')
         {
             utf8.str[utf8.length++] = *c;
             continue;
         }
 
-        if (size_t(c + 6 - s) < length && c[1] == 'u' &&
+        if (size_t(c + 5 - s) < length && c[1] == 'u' &&
             is_char_alpha_num_hex(c[2]) &&
             is_char_alpha_num_hex(c[3]) &&
             is_char_alpha_num_hex(c[4]) &&
@@ -84,6 +94,13 @@ string_t string_utf8_unescape(const char* s, size_t length)
             for (int j = 0; j < utf_chars.length; ++j)
                 utf8.str[utf8.length++] = utf_chars_buffer[j];
             c += 5;
+        }
+        else if (size_t(c + 3 - s) < length && c[1] == 'x' &&
+            is_char_alpha_num_hex(c[2]) &&
+            is_char_alpha_num_hex(c[3]))
+        {
+            utf8.str[utf8.length++] = hex_value(c[2]) << 4 | hex_value(c[3]);
+            c += 3;
         }
         else if (size_t(c + 1 - s) < length && (c[1] == '/' || c[1] == '"'))
         {
@@ -118,13 +135,13 @@ bool string_equal_ignore_whitespace(const char* lhs, size_t lhs_length, const ch
         while (is_whitespace(*l))
         {
             if (--lhs_length == 0 || *(++l) == 0)
-                return false;
+                goto string_equal_ignore_whitespace_check;
         }
 
         while (is_whitespace(*r))
         {
             if (--rhs_length == 0 || *(++r) == 0)
-                return false;
+                goto string_equal_ignore_whitespace_check;
         }
 
         if (*l != *r)
@@ -132,6 +149,21 @@ bool string_equal_ignore_whitespace(const char* lhs, size_t lhs_length, const ch
 
         ++l, ++r;
         --lhs_length, --rhs_length;
+    }
+
+string_equal_ignore_whitespace_check:
+
+    // Trim any remaining whitespaces
+    while (l && lhs_length > 0 && is_whitespace(*l))
+    {
+        ++l;
+        --lhs_length;
+    }
+
+    while (r && rhs_length > 0 && is_whitespace(*r))
+    {
+        ++r;
+        --rhs_length;
     }
 
     return lhs_length == rhs_length;
@@ -216,11 +248,11 @@ string_t string_from_currency(char* buffer, size_t capacity, double value, const
 
     const double abs_value = math_abs(value);
     if (abs_value >= 1e12)
-        return string_format(buffer, capacity, STRING_CONST("%.3gT $"), value / 1e12);
+        return string_format(buffer, capacity, STRING_CONST("%.4gT $"), value / 1e12);
     if (abs_value >= 1e9)
-        return string_format(buffer, capacity, STRING_CONST("%.3gB $"), value / 1e9);
-    else if (abs_value >= 1e7)
-        return string_format(buffer, capacity, STRING_CONST("%.3gM $"), value / 1e6);
+        return string_format(buffer, capacity, STRING_CONST("%.4gB $"), value / 1e9);
+    else if (abs_value >= 1e6)
+        return string_format(buffer, capacity, STRING_CONST("%.4gM $"), value / 1e6);
 
     if (money_fmt == nullptr)
     {
@@ -394,14 +426,14 @@ string_t* string_split(string_const_t str, string_const_t sep)
 string_const_t string_remove_line_returns(char* buffer, size_t capacity, const char* str, size_t length)
 {
     if (string_find(str, length, '\n', 0) == STRING_NPOS)
-        return {};
+        return {str, length};
 
     bool space_injected = false;
     string_t result = {buffer, 0};
     for (size_t i = 0; i < length && result.length < capacity-1; ++i)
     {
         const char tok = str[i];
-        if (tok < ' ')
+        if (tok > 0 && tok < ' ')
         {
             if (!space_injected)
             {
@@ -2141,6 +2173,9 @@ bool string_try_convert_date(const char* str, size_t length, time_t& date)
 
 bool string_try_convert_number(const char* str, size_t length, double& out_value)
 {
+    if (str == nullptr || length == 0)
+        return false;
+
     char* end = (char*)str + length;
     out_value = strtod(str, &end);
     return end == str + length;
@@ -2198,7 +2233,7 @@ string_t string_remove_line_returns(const char* str, size_t length)
     for (size_t i = 0; i < length; ++i)
     {
         const char tok = str[i];
-        if (tok < ' ')
+        if (tok > 0 && tok < ' ')
         {
             if (!space_injected)
             {
@@ -2432,6 +2467,8 @@ FOUNDATION_STATIC string_template_token_t* string_template_tokens(const char* fo
                             t.options |= StringTokenOption::Translate;
                         else if (string_equal(STRING_ARGS(opts), STRING_ARGS(ABBREVIATE_OPTION)))
                             t.options |= StringTokenOption::Abbreviate;
+                        else if (string_equal(STRING_ARGS(opts), STRING_ARGS(SHORT_OPTION)))
+                            t.options |= StringTokenOption::Short;
                         else if (colon == STRING_NPOS) // An options starting with : is valid and is used to provide a value description
                         {
                             FOUNDATION_ASSERT_FAILFORMAT("Invalid template argument options (%.*s)", STRING_FORMAT(opts));
@@ -2487,6 +2524,13 @@ FOUNDATION_FORCEINLINE bool string_template_argument_type_is_number(string_argum
     }
 
     return false;
+}
+
+FOUNDATION_FORCEINLINE double string_format_round_number(double value, const string_template_token_t& t)
+{
+    if (test(t.options, StringTokenOption::Abbreviate))
+        return (double)math_round(value);
+    return value;
 }
 
 FOUNDATION_STATIC string_t string_format_template_args(char* buffer, size_t capacity, const char* format, size_t format_length, string_argument_type_t t1, va_list args)
@@ -2606,7 +2650,7 @@ FOUNDATION_STATIC string_t string_format_template_args(char* buffer, size_t capa
 
             bufpos += string_from_currency(buffer + bufpos, capacity - bufpos, currency_value).length;
         }
-        else if (test(t.options, StringTokenOption::Abbreviate) && string_template_argument_type_is_number(type))
+        else if (any(t.options, StringTokenOption::Abbreviate | StringTokenOption::Short) && string_template_argument_type_is_number(type))
         {
             if ((type == StringArgumentType::DOUBLE || type == StringArgumentType::FLOAT) && !math_real_is_finite(values[t.index].f))
             {
@@ -2614,20 +2658,33 @@ FOUNDATION_STATIC string_t string_format_template_args(char* buffer, size_t capa
             }
             else
             {
-                int64_t value = math_round(values[t.index].f);
+                double value = values[t.index].f;
                 if (type == StringArgumentType::INT32 || type == StringArgumentType::INT64 || type == StringArgumentType::UINT32 || type == StringArgumentType::UINT64)
-                    value = values[t.index].i;
+                    value = (double)values[t.index].i;
 
-                if (value > 1e12)
-                    bufpos += string_format(buffer + bufpos, capacity - bufpos, STRING_CONST("%lldT"), value / 1000000000000LL).length;
-                else if (value > 1e9)
-                    bufpos += string_format(buffer + bufpos, capacity - bufpos, STRING_CONST("%lldG"), value / 1000000000LL).length;
-                else if (value > 1e6)
-                    bufpos += string_format(buffer + bufpos, capacity - bufpos, STRING_CONST("%lldM"), value / 1000000LL).length;
-                else if (value > 1e3)
-                    bufpos += string_format(buffer + bufpos, capacity - bufpos, STRING_CONST("%lldK"), value / 1000LL).length;
+                const double absvalue = math_abs(value);
+                if (absvalue > 1e12)
+                    bufpos += string_format(buffer + bufpos, capacity - bufpos, STRING_CONST("%.3lgT"), string_format_round_number(value / 1e12, t)).length;
+                else if (absvalue > 1e9)
+                    bufpos += string_format(buffer + bufpos, capacity - bufpos, STRING_CONST("%.3lgB"), string_format_round_number(value / 1e9, t)).length;
+                else if (absvalue > 1e6)
+                    bufpos += string_format(buffer + bufpos, capacity - bufpos, STRING_CONST("%.3lgM"), string_format_round_number(value / 1e6, t)).length;
+                else if (absvalue > 1e3)
+                    bufpos += string_format(buffer + bufpos, capacity - bufpos, STRING_CONST("%.3lgK"), string_format_round_number(value / 1e3, t)).length;
+                else if (absvalue > 9)
+                    bufpos += string_format(buffer + bufpos, capacity - bufpos, STRING_CONST("%.3lg"), string_format_round_number(value, t)).length;
+                else if (absvalue > 0.01)
+                    bufpos += string_format(buffer + bufpos, capacity - bufpos, STRING_CONST("%.2lg"), string_format_round_number(value, t)).length;
+                else if (absvalue > 1e-3)
+                    bufpos += string_format(buffer + bufpos, capacity - bufpos, STRING_CONST("%.3lgm"), value * 1e3).length;
+                else if (absvalue > 1e-6)
+                    bufpos += string_format(buffer + bufpos, capacity - bufpos, STRING_CONST("%.3lgu"), value * 1e6).length;
+                else if (absvalue > 1e-9)
+                    bufpos += string_format(buffer + bufpos, capacity - bufpos, STRING_CONST("%.3lgn"), value * 1e9).length;
+                else if (absvalue > 1e-12)
+                    bufpos += string_format(buffer + bufpos, capacity - bufpos, STRING_CONST("%.3lgp"), value * 1e12).length;
                 else
-                    bufpos += string_from_int(buffer + bufpos, capacity - bufpos, value, t.precision, 0).length;
+                    bufpos += string_format(buffer + bufpos, capacity - bufpos, STRING_CONST("%.3lgt"), value * 1e15).length;
             }
         }
         else if (test(t.options, StringTokenOption::StringTableSymbol) && type == StringArgumentType::INT32)
@@ -2660,15 +2717,15 @@ FOUNDATION_STATIC string_t string_format_template_args(char* buffer, size_t capa
 
             //unit_label = tr(STRING_ARGS(unit_label), true);
             string_const_t fmttr = tr(STRING_CONST("{0,round} {1,translate:unit} {2,translate:ago}"), true);
-            bufpos += string_template(buffer + bufpos, capacity - bufpos,  fmttr, unit_since, unit_label, "ago").length;
+            bufpos += string_template(buffer + bufpos, capacity - bufpos, fmttr, unit_since, unit_label, "ago").length;
         }
         else if (type == StringArgumentType::INT32 || type == StringArgumentType::INT64)
         {
-            bufpos += string_from_int(buffer + bufpos, capacity - bufpos, values[t.index].i, t.precision, 0).length;
+            bufpos += string_from_int(buffer + bufpos, capacity - bufpos, values[t.index].i, t.precision, '0').length;
         }
         else if (type == StringArgumentType::UINT32 || type == StringArgumentType::UINT64)
         {
-            char padding = 0;
+            char padding = ' ';
             int width = t.precision;
             
             if (test(t.options, StringTokenOption::HexPrefix))
@@ -2696,7 +2753,7 @@ FOUNDATION_STATIC string_t string_format_template_args(char* buffer, size_t capa
         {   
             double value = values[t.index].f;
             if (test(t.options, StringTokenOption::Round))
-                bufpos += string_from_int(buffer + bufpos, capacity - bufpos, math_round(value), t.precision, 0).length;
+                bufpos += string_from_int(buffer + bufpos, capacity - bufpos, math_round(value), t.precision, ' ').length;
             else
                 bufpos += string_from_float64(buffer + bufpos, capacity - bufpos, value, t.precision, 0, 0).length;
         }
@@ -2746,8 +2803,15 @@ FOUNDATION_STATIC string_t string_format_template_args(char* buffer, size_t capa
             {
                 if (j > 0)
                     bufpos += string_copy(buffer + bufpos, capacity - bufpos, STRING_CONST(", ")).length;
-                bufpos += string_from_int(buffer + bufpos, capacity - bufpos, array[j], t.precision, 0).length;
+                bufpos += string_from_int(buffer + bufpos, capacity - bufpos, array[j], t.precision, ' ').length;
             }
+        }
+        else if (type == StringArgumentType::POINTER)
+        {
+            if (t.precision == 0)
+                bufpos += string_copy(buffer + bufpos, capacity - bufpos, "", 0).length;
+            else
+                bufpos += string_copy(buffer + bufpos, capacity - bufpos, STRING_CONST("null")).length;
         }
         else
             FOUNDATION_ASSERT_FAIL("Invalid string argument type");
@@ -2834,3 +2898,118 @@ string_t string_format_allocate_template(const char* format, size_t length, stri
 	return {buffer, to_size(n)};
 }
 
+version_t string_to_version_short(const char* str, size_t length)
+{
+    // Split the string using '.' as separator
+    version_t v;
+    v.sub.major = UINT16_MAX;
+    v.sub.minor = UINT16_MAX;
+    v.sub.revision = UINT32_MAX;
+    v.sub.build = 0;
+    v.sub.control = 0;
+
+    string_const_t l, r;
+    string_split(str, length, STRING_CONST("."), &l, &r, false);
+    while (l.length)
+    {
+        if (v.sub.major == UINT16_MAX)
+            v.sub.major = (uint16_t)string_to_uint(STRING_ARGS(l), 0);
+        else if (v.sub.minor == UINT16_MAX)
+            v.sub.minor = (uint16_t)string_to_uint(STRING_ARGS(l), 0);
+        else if (v.sub.revision == UINT32_MAX)
+            v.sub.revision = string_to_uint(STRING_ARGS(l), 0);
+        else
+            v.sub.build = string_to_uint(STRING_ARGS(l), 0);
+        
+        string_split(r.str, r.length, STRING_CONST("."), &l, &r, false);
+    }
+
+    return v;
+}
+
+string_t string_utf8_from_code_point(char* buffer, size_t capacity, const char* str, size_t length)
+{
+    // Skip U+ if any
+    if (length > 2 && str[0] == 'U' && str[1] == '+')
+    {
+        str += 2;
+        length -= 2;
+    }
+
+    // Parse hex value
+    uint32_t code_point = string_to_uint(str, length, true);
+    return string_utf8_from_code_point(buffer, capacity, code_point);
+}
+
+string_t string_utf8_from_code_point(char* buffer, size_t capacity, uint32_t code_point)
+{
+    // Transform code point, i.e. `f1cc` to utf-8 string, e.g "\xef\x87\x8c"
+
+    // 1 byte
+    if (code_point < 0x80)
+    {
+        if (capacity >= 1)
+        {
+            buffer[0] = (char)code_point;
+        }
+
+        if (capacity > 1)
+            buffer[1] = '\0';
+
+        return { buffer, 1 };
+    }
+
+    // 2 bytes
+    if (code_point < 0x800)
+    {
+        if (capacity >= 2)
+        {
+            buffer[0] = (char)(0xc0 | (code_point >> 6));
+            buffer[1] = (char)(0x80 | (code_point & 0x3f));
+        }
+
+        if (capacity > 2)
+            buffer[2] = '\0';
+
+        return { buffer, 2 };
+    }
+
+    // 3 bytes
+    if (code_point < 0x10000)
+    {
+        if (capacity >= 3)
+        {
+            buffer[0] = (char)(0xe0 | (code_point >> 12));
+            buffer[1] = (char)(0x80 | ((code_point >> 6) & 0x3f));
+            buffer[2] = (char)(0x80 | (code_point & 0x3f));
+        }
+
+        if (capacity > 3)
+            buffer[3] = '\0';
+
+        return { buffer, 3 };
+    }
+
+    // 4 bytes
+    if (code_point < 0x110000)
+    {
+        if (capacity >= 4)
+        {
+            buffer[0] = (char)(0xf0 | (code_point >> 18));
+            buffer[1] = (char)(0x80 | ((code_point >> 12) & 0x3f));
+            buffer[2] = (char)(0x80 | ((code_point >> 6) & 0x3f));
+            buffer[3] = (char)(0x80 | (code_point & 0x3f));
+        }
+
+        if (capacity > 4)
+            buffer[4] = '\0';
+
+        return { buffer, 4 };
+    }
+
+    // Invalid code point
+    if (capacity > 0)
+        buffer[0] = '\0';
+
+    return { buffer, 0 };
+}

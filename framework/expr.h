@@ -34,8 +34,11 @@ typedef enum ExprErrorCode : int {
     EXPR_ERROR_INVALID_ARGUMENT,
     EXPR_ERROR_EVALUATION_STACK_FULL,
     EXPR_ERROR_EVALUATION_TIMEOUT,
+    EXPR_ERROR_EXCEPTION,
     EXPR_ERROR_EVALUATION_NOT_IMPLEMENTED,
     EXPR_ERROR_BAD_VARIABLE_NAME,
+    EXPR_ERROR_EMPTY_SET,
+    EXPR_ERROR_EVAL_FUNCTION,
 
     // Parsing errors
     EXPR_ERROR_ALLOCATION_FAILED = -1,
@@ -153,27 +156,13 @@ typedef enum ExprOperatorType {
 typedef struct ExprError
 {
     expr_error_code_t code;
+    expr_error_code_t outer;
     char message[1024];
     size_t message_length{ 0 };
 
-    ExprError(expr_error_code_t code, const char* msg = nullptr, ...)
-    {
-        this->code = code;
-
-        if (msg)
-        {
-            va_list list;
-            va_start(list, msg);
-            message_length = string_vformat(STRING_BUFFER(message), msg, string_length(msg), list).length;
-            va_end(list);
-        }
-        else
-        {
-            const char* expr_error_msg = expr_error_cstr(code);
-            size_t expr_error_msg_length = string_length(expr_error_msg);
-            message_length = string_copy(STRING_BUFFER(message), expr_error_msg, expr_error_msg_length).length;
-        }
-    }
+    ExprError(expr_error_code_t code, const char* msg = nullptr, ...);
+    ExprError(expr_error_code_t code, expr_error_code_t outer, const char* msg = nullptr, ...);
+    ExprError(expr_error_code_t code, const expr_func_t* f, vec_expr_t* args, unsigned arg_index, const char* msg, ...);
 } expr_error_t;
 
 /*! Flags used to represent an expression result storing a pointer value. */
@@ -740,6 +729,21 @@ struct expr_result_t
         if (type == EXPR_RESULT_NUMBER)
             return expr_result_t(value + rhs.as_number(0.0));
 
+        if (type == EXPR_RESULT_SYMBOL || rhs.type == EXPR_RESULT_SYMBOL)
+        {
+            // Concat values into a new string.
+            string_const_t s1 = this->as_string();
+            string_const_t s2 = rhs.as_string();
+
+            const size_t capacity = s1.length + s2.length + 1;
+            string_t sc = string_allocate(0, capacity);
+            sc = string_concat(sc.str, capacity, STRING_ARGS(s1), STRING_ARGS(s2));
+
+            expr_result_t r(string_to_const(sc));
+            string_deallocate(sc.str);
+            return r;
+        }
+
         FOUNDATION_ASSERT_FAIL("Unsupported");
         return *this;
     }
@@ -800,7 +804,7 @@ struct expr_result_t
 
         if (is_set())
         {
-            for (auto e : *this)
+            for (const auto& e : *this)
             {
                 if (e >= rhs)
                     return false;
@@ -828,7 +832,7 @@ struct expr_result_t
 
         if (is_set())
         {
-            for (auto e : *this)
+            for (const auto& e : *this)
             {
                 if (e <= rhs)
                     return false;
@@ -871,7 +875,7 @@ struct expr_result_t
 
         if (is_set())
         {
-            for (auto e : *this)
+            for (const auto& e : *this)
             {
                 if (e < rhs)
                     return false;
@@ -911,7 +915,7 @@ struct expr_result_t
         {
             for (unsigned i = 0, end = max(element_count(), rhs.element_count()); i < end; ++i)
             {
-                if (list[i].as_number(NAN) != rhs.as_number(NAN, i))
+                if (list[i].as_number(NAN) != rhs.as_number(DNAN, i))
                     return false;
             }
 
@@ -923,7 +927,7 @@ struct expr_result_t
             const uint16_t esize = element_size();
             for (unsigned i = 0, end = max(element_count(), rhs.element_count()); ptr && i < end; ++i)
             {
-                if (as_number(NAN, i) != rhs.as_number(NAN, i))
+                if (as_number(DNAN, i) != rhs.as_number(DNAN, i))
                     return false;
             }
 
@@ -944,13 +948,20 @@ struct expr_result_t
     expr_result_t operator!() const
     {
         if (type == EXPR_RESULT_NUMBER)
+        {
+            if (math_real_is_nan(value))
+                return expr_result_t(true);
             return expr_result_t((double)!math_trunc(value));
+        }
 
         if (type == EXPR_RESULT_TRUE)
             return expr_result_t(false);
 
         if (type == EXPR_RESULT_FALSE)
             return expr_result_t(true);
+
+        if (type == EXPR_RESULT_SYMBOL)
+            return !math_real_is_zero(value) && index > 0;
 
         FOUNDATION_ASSERT_FAIL("Unsupported");
         return *this;
@@ -995,6 +1006,15 @@ struct expr_result_t
     /*! Returns the & result of two value. */
     expr_result_t operator&(const expr_result_t& rhs) const
     {
+        if (type == EXPR_RESULT_FALSE || rhs.type == EXPR_RESULT_FALSE)
+            return false;
+
+        if (type == EXPR_RESULT_TRUE)
+            return rhs;
+
+        if (rhs.type == EXPR_RESULT_TRUE)
+            return *this;
+
         if (type == EXPR_RESULT_NUMBER && rhs.type == EXPR_RESULT_NUMBER)
             return (double)(math_trunc(value) & math_trunc(rhs.value));
 
@@ -1005,8 +1025,17 @@ struct expr_result_t
     /*! Returns the | result of two value. */
     expr_result_t operator|(const expr_result_t& rhs) const
     {
+        if (type == EXPR_RESULT_NULL && rhs.is_null())
+            return NIL;
+
         if (type == EXPR_RESULT_NUMBER && rhs.type == EXPR_RESULT_NUMBER)
             return (double)(math_trunc(value) | math_trunc(rhs.value));
+
+        if (!is_null())
+            return *this;
+
+        if (type == EXPR_RESULT_NULL && !rhs.is_null())
+            return rhs;
 
         FOUNDATION_ASSERT_FAIL("Unsupported");
         return *this;
@@ -1271,6 +1300,15 @@ bool expr_unregister_function(const char* name, exprfn_t fn = nullptr);
  */
 expr_var_t* expr_get_or_create_global_var(const char* name, size_t name_length = 0ULL);
 
+/*! Return the variable value if any. 
+ * 
+ *  @param name Name of the variable.
+ *  @param name_length Length of the name, or 0 if null terminated.
+ * 
+ *  @return Variable value if found, or a null value if not found.
+ */
+expr_result_t expr_get_global_var_value(const char* name, size_t name_length = 0ULL);
+
 /*! Set or create a global variable accessible thought the expression system.
  *
  *  @param name  Name of the variable.
@@ -1285,14 +1323,6 @@ expr_var_t* expr_set_or_create_global_var(const char* name, size_t name_length, 
  *  @param funcs Array of functions to register.
  */
 void expr_register_vec_mat_functions(expr_func_t*& funcs);
-
-/*! Create an expression result from a symbol from the global string table.
- *
- *  @param symbol Symbol to evaluate.
- *
- *  @return Expression result converted to a string.
- */
-expr_result_t expr_eval_symbol(string_table_symbol_t symbol);
 
 /*! Merge a key value pair into an expression result set, i.e. [key, value]
  *
@@ -1324,6 +1354,16 @@ expr_result_t expr_eval_merge(const expr_result_t& key, const expr_result_t& val
  *  @return String value of the argument.
  */
 string_const_t expr_eval_get_string_arg(const vec_expr_t* args, size_t idx, const char* message);
+
+/*! Evaluates the expression argument at a given index to a data set value. 
+ * 
+ *  @param args     Expression argument vector.
+ *  @param idx      Index of the argument to evaluate.
+ *  @param message  Error message if evaluation fails.
+ * 
+ *  @return Data set value of the argument.
+ */
+expr_result_t expr_eval_get_set_arg(const vec_expr_t* args, size_t idx, const char* message);
 
 /*! Log expression result to the console
  * 

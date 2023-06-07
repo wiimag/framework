@@ -5,7 +5,6 @@
  * This module contains application framework specific code. 
  * It is expected that the project sources also includes an app.cpp and defines the following functions:
  *  extern const char* app_title()
- *  extern void app_exception_handler(const char* dump_file, size_t length)
  *  extern void app_initialize()
  *  extern void app_shutdown()
  *  extern void app_update()
@@ -22,6 +21,7 @@
 #include <framework/profiler.h>
 #include <framework/array.h>
 #include <framework/common.h>
+#include <framework/window.h>
 
 #include <foundation/memory.h>
 #include <foundation/version.h>
@@ -40,6 +40,20 @@ struct app_dialog_t
     app_dialog_handler_t handler{};
     app_dialog_close_handler_t close_handler{};
     void* user_data{ nullptr };
+    window_handle_t window{ 0 };
+};
+
+struct app_input_dialog_t
+{
+    string_t title;
+    string_t apply_label;
+    string_t initial_value;
+    string_t hint;
+
+    bool closed;
+    char input[1024];
+
+    function<void(string_const_t value, bool canceled)> callback;
 };
 
 struct app_menu_t
@@ -62,7 +76,7 @@ struct app_menu_t
 };
 
 static app_menu_t* _menus = nullptr;
-static app_dialog_t* _dialogs = nullptr;
+static app_dialog_t** _dialogs = nullptr;
 
 //
 // # PRIVATE
@@ -72,11 +86,12 @@ FOUNDATION_STATIC void app_dialogs_shutdown()
 {
     for (unsigned i = 0, end = array_size(_dialogs); i < end; ++i)
     {
-        app_dialog_t& dlg = _dialogs[i];
-        if (dlg.close_handler)
-            dlg.close_handler(dlg.user_data);
-        dlg.close_handler.~function();
-        dlg.handler.~function();
+        app_dialog_t* dlg = _dialogs[i];
+        if (dlg->close_handler)
+            dlg->close_handler(dlg->user_data);
+        dlg->close_handler.~function();
+        dlg->handler.~function();
+        MEM_DELETE(dlg);
     }
 
     array_deallocate(_dialogs);
@@ -263,31 +278,34 @@ FOUNDATION_STATIC ImGuiKeyChord app_string_to_shortcut_key_coord(const char* str
     return key;
 }
 
-FOUNDATION_STATIC void app_dialogs_render()
+void app_dialogs_render()
 {
     for (unsigned i = 0, end = array_size(_dialogs); i < end; ++i)
     {
-        app_dialog_t& dlg = _dialogs[i];
-        if (!dlg.window_opened_once)
+        app_dialog_t* dlg = _dialogs[i];
+
+        if (dlg->window != window_current())
+            continue;
+
+        if (!dlg->window_opened_once)
         {
             const ImVec2 window_size = ImGui::GetWindowSize();
-            ImGui::SetNextWindowPos(ImVec2((window_size.x - dlg.width) / 2.0f, (window_size.y - dlg.height) / 2.0f), ImGuiCond_FirstUseEver);
-            ImGui::SetNextWindowSizeConstraints(ImVec2(dlg.width, dlg.height), ImVec2(INFINITY, INFINITY));
+            ImGui::SetNextWindowPos(ImVec2((window_size.x - dlg->width) / 2.0f, (window_size.y - dlg->height) / 2.0f), ImGuiCond_FirstUseEver);
+            ImGui::SetNextWindowSizeConstraints(ImVec2(dlg->width, dlg->height), ImVec2(INFINITY, INFINITY));
             ImGui::SetNextWindowFocus();
-            dlg.window_opened_once = true;
+            dlg->window_opened_once = true;
         }
 
-        if (ImGui::Begin(dlg.title, &dlg.opened, (ImGuiWindowFlags_NoCollapse) | (dlg.can_resize ? ImGuiWindowFlags_None : ImGuiWindowFlags_NoResize)))
+        if (ImGui::Begin(dlg->title, &dlg->opened, (ImGuiWindowFlags_NoCollapse) | (dlg->can_resize ? ImGuiWindowFlags_None : ImGuiWindowFlags_NoResize)))
         {
             if (ImGui::IsWindowFocused() && shortcut_executed(ImGuiKey_Escape))
-                dlg.opened = false;
+                dlg->opened = false;
 
-            if (!dlg.opened || !dlg.handler(dlg.user_data))
+            if (!dlg->opened || !dlg->handler(dlg->user_data))
             {
-                dlg.handler.~function();
-                if (dlg.close_handler)
-                    dlg.close_handler(dlg.user_data);
-                dlg.close_handler.~function();
+                if (dlg->close_handler)
+                    dlg->close_handler(dlg->user_data);
+                MEM_DELETE(dlg);
                 array_erase(_dialogs, i);
                 ImGui::End();
                 break;
@@ -295,6 +313,23 @@ FOUNDATION_STATIC void app_dialogs_render()
         }
         ImGui::End();
     }
+}
+
+FOUNDATION_STATIC void app_input_dialog_close_handler(void* user_data)
+{
+    FOUNDATION_ASSERT(user_data);
+    app_input_dialog_t* dlg = (app_input_dialog_t*)user_data;
+
+    if (dlg->callback && !dlg->closed)
+        dlg->callback(string_null(), true);
+
+    string_deallocate(dlg->title.str);
+    string_deallocate(dlg->apply_label.str);
+    string_deallocate(dlg->initial_value.str);
+    string_deallocate(dlg->hint.str);
+
+    dlg->callback.~function();
+    memory_deallocate(dlg);
 }
 
 //
@@ -307,29 +342,34 @@ void app_open_dialog(const char* title, const app_dialog_handler_t& handler, uin
 
     for (unsigned i = 0, end = array_size(_dialogs); i < end; ++i)
     {
-        app_dialog_t& dlg = _dialogs[i];
-        if (string_equal(title, string_length(title), dlg.title, string_length(dlg.title)))
+        app_dialog_t* dlg = _dialogs[i];
+        if (string_equal(title, string_length(title), dlg->title, string_length(dlg->title)))
         {
-            log_warnf(0, WARNING_UI, STRING_CONST("Dialog %s is already opened"), dlg.title);
+            log_warnf(0, WARNING_UI, STRING_CONST("Dialog %s is already opened"), dlg->title);
+            if (close_handler)
+                close_handler(user_data);
             return;
         }
     }
 
-    app_dialog_t dlg{};
-    dlg.can_resize = can_resize;
-    if (width) dlg.width = width;
-    if (height) dlg.height = height;
-    dlg.handler = handler;
-    dlg.close_handler = close_handler;
-    dlg.user_data = user_data;
-    string_copy(STRING_BUFFER(dlg.title), title, string_length(title));
-    array_push_memcpy(_dialogs, &dlg);
+    app_dialog_t* dlg = MEM_NEW(HASH_APP, app_dialog_t);
+    dlg->opened = true;
+    dlg->window_opened_once = false;
+    dlg->can_resize = can_resize;
+    if (width) dlg->width = width;
+    if (height) dlg->height = height;
+    dlg->handler = handler;
+    dlg->close_handler = close_handler;
+    dlg->user_data = user_data;
+    dlg->window = window_current();
+    string_copy(STRING_BUFFER(dlg->title), title, string_length(title));
+    array_push(_dialogs, dlg);
 }
 
 void app_register_menu(
     hash_t context, 
-    const char* path, size_t path_length, 
-    const char* shortcut, size_t shortcut_length,
+    STRING_PARAM(path),
+    STRING_PARAM(shortcut),
     app_menu_flags_t flags, 
     app_event_handler_t&& handler, void* user_data)
 {
@@ -341,8 +381,8 @@ void app_register_menu(
     menu.flags = flags;
     menu.user_data = user_data;
     menu.append_menu = test(flags, AppMenuFlags::Append);
-    string_t full_path = string_copy(STRING_BUFFER(menu.path), path, path_length);
-    string_t shortcutstr = string_copy(STRING_BUFFER(menu.shortcut), shortcut, shortcut_length);
+    string_t full_path = string_copy(STRING_BUFFER(menu.path), STRING_PARAM_ARGS(path));
+    string_t shortcutstr = string_copy(STRING_BUFFER(menu.shortcut), STRING_PARAM_ARGS(shortcut));
 
     menu.shortcut_key = app_string_to_shortcut_key_coord(STRING_ARGS(shortcutstr));
     if (menu.shortcut_key != 0)
@@ -375,6 +415,80 @@ void app_menu_begin(GLFWwindow* window)
 void app_menu_end(GLFWwindow* window)
 {
     app_menu(true);
+}
+
+void app_open_input_dialog(
+    STRING_PARAM(title), 
+    STRING_PARAM(apply_label), 
+    STRING_PARAM(initial_value), 
+    STRING_PARAM(hint), 
+    const function<void(string_const_t value, bool canceled)>& callback)
+{
+    FOUNDATION_ASSERT(callback);
+
+    app_input_dialog_t* dlg = memory_allocate<app_input_dialog_t>(HASH_APP);
+    dlg->closed = false;
+    dlg->callback = callback;
+    dlg->title = string_clone(STRING_PARAM_ARGS(title));
+    dlg->apply_label = string_clone(STRING_PARAM_ARGS(apply_label));
+    dlg->initial_value = string_clone(STRING_PARAM_ARGS(initial_value));
+    dlg->hint = string_clone(STRING_PARAM_ARGS(hint));
+    string_copy(STRING_BUFFER(dlg->input), STRING_ARGS(dlg->initial_value));
+
+    app_open_dialog(dlg->title.str, [](void* user_data) -> bool
+    {
+        FOUNDATION_ASSERT(user_data);
+        app_input_dialog_t& dlg = *(app_input_dialog_t*)user_data;
+        
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(IM_SCALEF(6), IM_SCALEF(10)));
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemInnerSpacing, ImVec2(IM_SCALEF(6), IM_SCALEF(10)));
+
+        bool applied = false;
+        bool canceled = false;
+        bool can_apply = false;
+
+        if (ImGui::IsWindowAppearing())
+            ImGui::SetKeyboardFocusHere();
+
+        ImGui::ExpandNextItem();
+        if (ImGui::InputTextEx("##InputField", dlg.hint.str, STRING_BUFFER(dlg.input), 
+            ImVec2(0, 0), ImGuiInputTextFlags_AutoSelectAll | ImGuiInputTextFlags_EnterReturnsTrue))
+        {
+            applied  = true;
+        }
+
+        const size_t input_length = string_length(dlg.input);
+        if (input_length > 0)
+            can_apply = true;
+
+        static float apply_button_width = IM_SCALEF(90);
+        static float cancel_button_width = IM_SCALEF(90);
+        const float button_between_space = IM_SCALEF(8);
+
+        const float available_space = ImGui::GetContentRegionAvail().x;
+        ImGui::MoveCursor(available_space - cancel_button_width - apply_button_width - button_between_space, IM_SCALEF(8));
+        if (ImGui::Button(tr("Cancel"), { IM_SCALEF(90), IM_SCALEF(24) }))
+            canceled = true;
+        cancel_button_width = ImGui::GetItemRectSize().x;
+
+        ImGui::SameLine();
+        ImGui::BeginDisabled(!can_apply);
+        if (ImGui::Button(dlg.apply_label.str, { IM_SCALEF(90), IM_SCALEF(24) }))
+            applied = true;
+        apply_button_width = ImGui::GetItemRectSize().x;
+        ImGui::EndDisabled();
+
+        ImGui::PopStyleVar(2);
+
+        if (can_apply && applied)
+        {
+            dlg.callback.invoke(string_to_const(dlg.input), false);
+            dlg.closed = true;
+        }
+
+        return !dlg.closed && !canceled;
+
+    }, IM_SCALEF(300), IM_SCALEF(100), false, dlg, app_input_dialog_close_handler);
 }
 
 void app_menu_help(GLFWwindow* window)
@@ -551,8 +665,6 @@ void app_menu_help(GLFWwindow* window)
 
 FOUNDATION_STATIC void app_framework_initialize()
 {
-    //system_add_menu_item("test");
-
     module_register_window(HASH_APP, app_dialogs_render);
 }
 

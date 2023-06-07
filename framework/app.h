@@ -59,7 +59,7 @@ extern void app_render_3rdparty_libs();
  *  @param dump_file The path to the dump file.
  *  @param length    The length of the dump file.
  */
-extern void app_exception_handler(const char* dump_file, size_t length);
+extern void app_exception_handler(void* args, const char* dump_file, size_t length);
 
 /*! Configure the application features and framework core services. 
  * 
@@ -125,15 +125,18 @@ template<typename VoidHandler>
 FOUNDATION_FORCEINLINE void app_open_dialog(
     const char* title,
     uint32_t width, uint32_t height, bool can_resize, 
-    VoidHandler&& handler)
+    const VoidHandler& handler)
 {
-    app_open_dialog(title, [=](void* user_data)->bool
+    app_open_dialog(title, [handler](void* user_data)->bool
     {
         FOUNDATION_ASSERT(user_data == nullptr);
         handler();
         return true;
     }, width, height, can_resize, nullptr, nullptr);
 }
+
+/*! Render all active dialogs for the current window. */
+void app_dialogs_render();
 
 /*! Entry point to render application menus as IMGUI menus. */
 void app_menu_begin(GLFWwindow* window);
@@ -145,17 +148,15 @@ void app_menu_end(GLFWwindow* window);
  *
  *  @param context       The context of the menu item.
  *  @param path          The path of the menu item.
- *  @param path_length   The length of the path.
  *  @param shortcut      The shortcut of the menu item.
- *  @param shortcut_length The length of the shortcut.
  *  @param flags         The flags of the menu item.
  *  @param handler       The handler to be called when the menu item is selected.
  *  @param user_data     The user data to be passed to the handler.
  */
 void app_register_menu(
     hash_t context, 
-    const char* path, size_t path_length,
-    const char* shortcut, size_t shortcut_length,
+    STRING_PARAM(path),
+    STRING_PARAM(shortcut),
     app_menu_flags_t flags, 
     app_event_handler_t&& handler, void* user_data = nullptr);
 
@@ -164,3 +165,21 @@ void app_register_menu(
  *  @param window The window to render the menu items for.
  */
 void app_menu_help(GLFWwindow* window);
+
+/*! Opens and render an input dialog used to query the user for an input string.
+ *
+ *  This dialog is modal and mainly useful to get a quick user input. In example
+ *  to rename a document or to get the name of a new document.
+ *
+ *  @param title         The title of the dialog.
+ *  @param apply_label   The label of the apply button.
+ *  @param initial_value The initial value of the input field.
+ *  @param hint          The hint of the input field.
+ *  @param callback      The callback to be called when the dialog is closed.
+ */
+void app_open_input_dialog(
+    STRING_PARAM(title), 
+    STRING_PARAM(apply_label), 
+    STRING_PARAM(initial_value), 
+    STRING_PARAM(hint), 
+    const function<void(string_const_t value, bool canceled)>& callback);

@@ -11,10 +11,12 @@
 #include <framework/imgui.h>
 #include <framework/string.h>
 #include <framework/array.h>
+#include <framework/string_builder.h>
 
 #include <foundation/assert.h>
 #include <foundation/math.h>
 #include <foundation/time.h>
+#include <foundation/stream.h>
 
 #include <mnyfmt.h>
 #include <sys/timeb.h>
@@ -26,7 +28,7 @@ static thread_local ImRect _table_last_cell_rect;
 struct table_column_header_render_args_t
 {
     table_t* table{ nullptr };
-    column_t* column{ nullptr };
+    table_column_t* column{ nullptr };
     int column_index{ -1 };
 };
 
@@ -35,12 +37,12 @@ FOUNDATION_FORCEINLINE bool format_is_numeric(column_format_t format)
     return (format == COLUMN_FORMAT_NUMBER || format == COLUMN_FORMAT_CURRENCY || format == COLUMN_FORMAT_PERCENTAGE);
 }
 
-FOUNDATION_FORCEINLINE bool cell_format_is_numeric(const cell_t& cell)
+FOUNDATION_FORCEINLINE bool cell_format_is_numeric(const table_cell_t& cell)
 {
     return format_is_numeric(cell.format);
 }
 
-FOUNDATION_STATIC string_const_t cell_number_value_to_string(const cell_t& cell, column_format_t format = COLUMN_FORMAT_UNDEFINED, column_flags_t flags = COLUMN_OPTIONS_NONE)
+FOUNDATION_STATIC string_const_t cell_number_value_to_string(const table_cell_t& cell, column_format_t format = COLUMN_FORMAT_UNDEFINED, column_flags_t flags = COLUMN_OPTIONS_NONE)
 {
     if (math_real_is_nan(cell.number))
         return CTEXT("-");
@@ -65,8 +67,8 @@ FOUNDATION_STATIC string_const_t cell_number_value_to_string(const cell_t& cell,
                 return string_format_static(STRING_CONST("%.3gK" THIN_SPACE "$"), value / 1e3);
         }
         if (flags & COLUMN_ROUND_NUMBER)
-            return string_from_currency(value, STRING_CONST("9" THIN_SPACE "999" THIN_SPACE "999" THIN_SPACE "$"));
-        return string_from_currency(math_round(value), STRING_CONST("9" THIN_SPACE "999" THIN_SPACE "999.99" THIN_SPACE "$"));
+            return string_from_currency(math_round(value), STRING_CONST("9" THIN_SPACE "999" THIN_SPACE "999" THIN_SPACE "$"));
+        return string_from_currency(value, STRING_CONST("9" THIN_SPACE "999" THIN_SPACE "999.99" THIN_SPACE "$"));
     }
 
     if (flags & COLUMN_ROUND_NUMBER)
@@ -105,8 +107,13 @@ FOUNDATION_STATIC string_const_t cell_number_value_to_string(const cell_t& cell,
         
         if (abs_value < 0.1)
             format_string = CTEXT("%.2g" THIN_SPACE "%%");
-        else if (abs_value < 1)
-            format_string = CTEXT("%.2lf" THIN_SPACE "%%");
+        else if (abs_value <= 1)
+        {
+            if (flags & COLUMN_ROUND_NUMBER)
+                format_string = CTEXT("%.1g" THIN_SPACE "%%");
+            else
+                format_string = CTEXT("%.2lf" THIN_SPACE "%%");
+        }
         else if (abs_value > 999)
             format_string = CTEXT("%.0lf" THIN_SPACE "%%");
         else if (flags & COLUMN_ROUND_NUMBER || abs_value <= 100)
@@ -140,7 +147,7 @@ FOUNDATION_STATIC string_const_t cell_number_value_to_string(const cell_t& cell,
     return string_to_const(formatted_value);
 }
 
-FOUNDATION_STATIC string_const_t cell_value_to_string(const cell_t& cell, const column_t& column)
+FOUNDATION_STATIC string_const_t cell_value_to_string(const table_cell_t& cell, const table_column_t& column)
 {
     if (cell.format == COLUMN_FORMAT_UNDEFINED)
         return CTEXT("-");
@@ -150,6 +157,9 @@ FOUNDATION_STATIC string_const_t cell_value_to_string(const cell_t& cell, const 
 
     if (cell.format == COLUMN_FORMAT_SYMBOL)
         return string_table_decode_const(cell.symbol);
+
+    if (cell.format == COLUMN_FORMAT_BOOLEAN)
+        return math_real_is_zero(cell.number) ? CTEXT(ICON_MD_CHECK_BOX_OUTLINE_BLANK) : CTEXT(ICON_MD_CHECK);
 
     if (cell_format_is_numeric(cell))
         return cell_number_value_to_string(cell, column.format, column.flags);
@@ -161,7 +171,7 @@ FOUNDATION_STATIC string_const_t cell_value_to_string(const cell_t& cell, const 
     return CTEXT("-");
 }
 
-FOUNDATION_STATIC void cell_label_wrapped(row_t& row, string_const_t label)
+FOUNDATION_STATIC void cell_label_wrapped(table_row_t& row, string_const_t label)
 {
     if (!label.str || label.length == 0)
         return;
@@ -175,7 +185,7 @@ FOUNDATION_STATIC void cell_label(string_const_t label)
     {
         const float space = ImGui::GetContentRegionAvail().x;
         ImGui::TextUnformatted(label.str, label.str + label.length);
-        if (ImGui::IsItemHovered() && ImGui::GetItemRectSize().x >space)
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal) && ImGui::GetItemRectSize().x >space)
             ImGui::SetTooltip(" %.*s ", STRING_FORMAT(label));
     }
 }
@@ -211,7 +221,7 @@ void table_cell_right_aligned_label(const char* label, size_t label_length, cons
         ImGui::TextURL(label, text_display_end, url, url_length);
     else
         ImGui::TextUnformatted(label, text_display_end);
-    if (ImGui::IsItemHovered() && tx > ImGui::GetColumnWidth() * 1.05f)
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal) && tx > ImGui::GetColumnWidth() * 1.05f)
         ImGui::SetTooltip(" %.*s ", (int)label_length, label);
 }
 
@@ -226,7 +236,7 @@ void table_cell_left_aligned_column_label(const char* label, void* payload)
 
     auto tx = ImGui::CalcTextSize(label, text_display_end).x;
     ImGui::TextUnformatted(label, text_display_end);
-    if (ImGui::IsItemHovered() && tx > ImGui::GetColumnWidth() * 1.05f)
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal) && tx > ImGui::GetColumnWidth() * 1.05f)
         ImGui::SetTooltip(" %.*s ", (int)label_length, label);
 }
 
@@ -244,14 +254,14 @@ void table_cell_middle_aligned_column_label(const char* label, void* payload)
 
 FOUNDATION_STATIC int table_qsort_cells(void* pcontext, void const* va, void const* vb)
 {
-    row_t* ra = (row_t*)va;
-    row_t* rb = (row_t*)vb;
+    table_row_t* ra = (table_row_t*)va;
+    table_row_t* rb = (table_row_t*)vb;
     table_element_ptr_t a = ra->element;
     table_element_ptr_t b = rb->element;
 
     table_sorting_context_t* context = (table_sorting_context_t*)pcontext;
     const table_t* table = context->table;
-    const column_t* sorting_column = context->sorting_column;
+    const table_column_t* sorting_column = context->sorting_column;
     const int pdiff = (int)pointer_diff(b, a);
     const bool sort_acsending = context->sort_direction == 1;
     if (sorting_column->flags & COLUMN_DYNAMIC_VALUE)
@@ -276,10 +286,10 @@ FOUNDATION_STATIC int table_qsort_cells(void* pcontext, void const* va, void con
     }
 
     const column_format_t format = sorting_column->format;
-    const cell_t& ca = sorting_column->fetch_value(a, sorting_column);
-    const cell_t& cb = sorting_column->fetch_value(b, sorting_column);
+    const table_cell_t& ca = sorting_column->fetch_value(a, sorting_column);
+    const table_cell_t& cb = sorting_column->fetch_value(b, sorting_column);
 
-    if (format_is_numeric(format) || (format_is_numeric(ca.format) && format_is_numeric(cb.format)))
+    if (format == COLUMN_FORMAT_BOOLEAN || format_is_numeric(format) || (format_is_numeric(ca.format) && format_is_numeric(cb.format)))
     {
         double sa = ca.number;
         double sb = cb.number;
@@ -320,7 +330,7 @@ FOUNDATION_STATIC int table_qsort_cells(void* pcontext, void const* va, void con
     return strncmp(ca.text, cb.text, min(ca.length, cb.length)) * (sort_acsending ? 1 : -1);
 }
 
-FOUNDATION_STATIC bool table_default_sorter(table_t* table, column_t* sorting_column, int sort_direction)
+FOUNDATION_STATIC bool table_default_sorter(table_t* table, table_column_t* sorting_column, int sort_direction)
 {
     if (table == nullptr || sorting_column == nullptr)
         return true;
@@ -341,6 +351,7 @@ table_t* table_allocate(const char* name, table_flags_t flags /*= TABLE_DEFAULT_
     new_table->name = string_allocate_format(STRING_CONST("Table_%s_1"), name);
     new_table->sort = &table_default_sorter;
     new_table->flags |= flags;
+    new_table->user_data = nullptr;
     return new_table;
 }
 
@@ -348,6 +359,7 @@ void table_deallocate(table_t* table)
 {
     if (table)
     {
+        memory_deallocate(table->new_row_data);
         string_deallocate(table->name.str);
         array_deallocate(table->rows);
         table->~table_t();
@@ -367,7 +379,7 @@ size_t table_column_count(table_t* table)
     return column_count;
 }
 
-FOUNDATION_STATIC column_t* table_column_at(table_t* table, size_t column_at)
+FOUNDATION_STATIC table_column_t* table_column_at(table_t* table, size_t column_at)
 {
     const size_t max_column_count = sizeof(table->columns) / sizeof(table->columns[0]);
     for (int i = 0; i < max_column_count; ++i)
@@ -386,18 +398,20 @@ FOUNDATION_STATIC void table_render_column_header(const char* label, void* paylo
     table_t* table = args->table;
     FOUNDATION_ASSERT(table);
 
-    const column_t* column = args->column;
+    const table_column_t* column = args->column;
     FOUNDATION_ASSERT(column);
 
     ImGui::BeginGroup();
     if (column->header_render)    
         column->header_render(table, column, args->column_index);
-    else if (format_is_numeric(column->format))
-        table_cell_right_aligned_column_label(label, nullptr);
     else if (column->flags & COLUMN_RIGHT_ALIGN)
         table_cell_right_aligned_column_label(label, nullptr);
     else if (column->flags & COLUMN_CENTER_ALIGN)
         table_cell_middle_aligned_column_label(label, nullptr);
+    else if (column->flags & COLUMN_LEFT_ALIGN)
+        table_cell_left_aligned_column_label(label, nullptr);
+    else if (format_is_numeric(column->format))
+        table_cell_right_aligned_column_label(label, nullptr);
     else
         table_cell_left_aligned_column_label(label, nullptr);
     ImGui::EndGroup();
@@ -412,7 +426,7 @@ FOUNDATION_STATIC void table_render_columns(table_t* table, int column_count)
     table_column_header_render_args_t column_headers_args[max_column_count];
     for (int i = 0; i < max_column_count; ++i)
     {
-        column_t& column = table->columns[i];
+        table_column_t& column = table->columns[i];
         if (column_index == column_count)
             break;
         else if (!column.used)
@@ -470,7 +484,7 @@ FOUNDATION_STATIC bool table_search_row_element(table_t* table, table_element_pt
     int column_count = (int)table_column_count(table);
     for (size_t column_index = 0; column_index < ARRAY_COUNT(table->columns); ++column_index)
     {
-        const column_t& c = table->columns[column_index];
+        const table_column_t& c = table->columns[column_index];
         if (column_index == column_count)
             break;
         else if (!c.used)
@@ -479,7 +493,7 @@ FOUNDATION_STATIC bool table_search_row_element(table_t* table, table_element_pt
         if ((c.flags & COLUMN_SEARCHABLE) == 0)
             continue;
 
-        const cell_t& cell = c.fetch_value(element, &c);
+        const table_cell_t& cell = c.fetch_value(element, &c);
         string_const_t cs = cell_value_to_string(cell, c);
         if (string_contains_nocase(STRING_ARGS(cs), STRING_ARGS(search_text)))
             return true;
@@ -502,7 +516,7 @@ FOUNDATION_STATIC void table_render_filter_rows(table_t* table)
                 table_element_ptr_t element = table->rows[i].element;
                 if (!table_search_row_element(table, element, table->search_filter))
                 {
-                    const row_t b = table->rows[table->rows_visible_count - 1];
+                    const table_row_t b = table->rows[table->rows_visible_count - 1];
                     table->rows[table->rows_visible_count - 1] = table->rows[i];
                     table->rows[i--] = b;
                     table->rows_visible_count--;
@@ -526,7 +540,7 @@ FOUNDATION_STATIC void table_render_sort_rows(table_t* table)
             r->height = table_default_row_height();
 
         const ImGuiTableColumnSortSpecs* column_sort_specs = table_specs->Specs;
-        column_t* sorted_column = table_column_at(table, column_sort_specs->ColumnIndex);
+        table_column_t* sorted_column = table_column_at(table, column_sort_specs->ColumnIndex);
         if (sorted_column != nullptr)
         {
             log_debugf(0, STRING_CONST("Sorting column %.*s [dir=%d]"), STRING_FORMAT(sorted_column->get_name()), column_sort_specs->SortDirection);
@@ -541,10 +555,10 @@ FOUNDATION_STATIC void table_render_update_ordered_elements(table_t* table, tabl
 {
     if (table->elements != elements || table->element_size != element_size || table->element_count != element_count)
     {
-        row_t* rows = table->rows;
+        table_row_t* rows = table->rows;
         array_resize(rows, element_count);
         if (rows && element_count > table->element_count)
-            memset(rows + table->element_count, 0, (element_count - table->element_count) * sizeof(row_t));
+            memset(rows + table->element_count, 0, (element_count - table->element_count) * sizeof(table_row_t));
 
         table_element_ptr_t element = (table_element_ptr_t)elements;
         table_element_ptr_const_t end = ((uint8_t*)elements) + (element_count * element_size);
@@ -570,17 +584,17 @@ FOUNDATION_STATIC void table_render_summary_row(table_t* table, int column_count
 {
     if ((table->flags & TABLE_SUMMARY) == 0 || table->rows_visible_count <= 1)
         return;
-    cell_t summary_cells[ARRAY_COUNT(table->columns)];
+    table_cell_t summary_cells[ARRAY_COUNT(table->columns)];
     memset(summary_cells, 0, sizeof(summary_cells));
 
     for (int element_index = 0; element_index < table->rows_visible_count; ++element_index)
     {
-        row_t& row = table->rows[element_index];
+        table_row_t& row = table->rows[element_index];
         table_element_ptr_t element = row.element;
 
         for (int i = 1, column_index = 0; i < ARRAY_COUNT(table->columns); ++i)
         {
-            column_t& column = table->columns[i];
+            table_column_t& column = table->columns[i];
             if (column_index == column_count)
                 break;
             else if (!column.used)
@@ -600,17 +614,18 @@ FOUNDATION_STATIC void table_render_summary_row(table_t* table, int column_count
                 row.fetched = table->update(element);
 
             column.flags |= COLUMN_COMPUTE_SUMMARY;
-            const cell_t& cell = column.fetch_value(element, &column);
+            const table_cell_t& cell = column.fetch_value(element, &column);
             column.flags &= ~COLUMN_COMPUTE_SUMMARY;
 
             // Build summary cells
-            cell_t& sc = summary_cells[i];
+            table_cell_t& sc = summary_cells[i];
             sc.format = column.format;
             switch (sc.format)
             {
                 case COLUMN_FORMAT_CURRENCY:
-                case COLUMN_FORMAT_NUMBER:
                 case COLUMN_FORMAT_PERCENTAGE:
+                case COLUMN_FORMAT_NUMBER:
+                case COLUMN_FORMAT_BOOLEAN:
                     if (!math_real_is_nan(cell.number))
                     {
                         sc.number += cell.number;
@@ -628,13 +643,13 @@ FOUNDATION_STATIC void table_render_summary_row(table_t* table, int column_count
     }
 
     //ImGui::TableNextRow();
-    //ImGui::TableNextRow();
+    ImGui::TableNextRow();
     ImGui::TableNextRow();
     ImGui::TableNextColumn();
     ImGui::TrTextUnformatted("Summary");
     for (size_t i = 1; i < ARRAY_COUNT(summary_cells); i++)
     {	
-        const column_t& column = table->columns[i];
+        const table_column_t& column = table->columns[i];
         if (i == column_count)
             break;
         else if (!column.used)
@@ -643,13 +658,13 @@ FOUNDATION_STATIC void table_render_summary_row(table_t* table, int column_count
         if (!ImGui::TableSetColumnIndex((int)i))
             continue;
 
-        cell_t& sc = summary_cells[i];
+        table_cell_t& sc = summary_cells[i];
         if (format_is_numeric(column.format))
         {
             if ((column.flags & COLUMN_SUMMARY_AVERAGE) || column.format == COLUMN_FORMAT_PERCENTAGE)
             {
                 sc.number /= (double)sc.length;
-                if (math_abs(sc.number) > 9.5)
+                if (column.format == COLUMN_FORMAT_PERCENTAGE && math_abs(sc.number) > 9.5)
                     sc.number = (double)math_round(sc.number);
             }
         }
@@ -681,7 +696,7 @@ FOUNDATION_STATIC void table_render_summary_row(table_t* table, int column_count
     ImGui::PopStyleColor(2);
 }
 
-FOUNDATION_FORCEINLINE bool table_column_is_number_value_trimmed(const column_t& column, const cell_t& cell)
+FOUNDATION_FORCEINLINE bool table_column_is_number_value_trimmed(const table_column_t& column, const table_cell_t& cell)
 {
     if (!math_real_is_finite(cell.number))
         return false;
@@ -698,11 +713,74 @@ FOUNDATION_FORCEINLINE bool table_column_is_number_value_trimmed(const column_t&
    return false;
 }
 
+FOUNDATION_STATIC bool table_render_add_new_row_element(table_t* table, int column_count)
+{
+    const auto font_height = table_default_row_height();
+
+    if (table->new_row_data == nullptr && table->element_size > 0)
+        table->new_row_data = memory_allocate(0, table->element_size, 0, MEMORY_PERSISTENT | MEMORY_ZERO_INITIALIZED);
+
+    table_element_ptr_t element = table->new_row_data;
+
+    ImGui::TableNextRow(0, table->row_fixed_height);
+
+    ImGuiTable* ct = ImGui::GetCurrentTable();
+    const size_t max_column_count = sizeof(table->columns) / sizeof(table->columns[0]);
+    for (int i = 0, column_index = 0; i < max_column_count; ++i)
+    {
+        table_column_t& column = table->columns[i];
+        if (column_index == column_count)
+            break;
+        else if (!column.used)
+            continue;
+
+        column_index++;
+        if (!ImGui::TableNextColumn())
+            continue;
+
+        if (!column.fetch_value)
+            continue;
+
+        char cell_id_buf[64];
+        string_t cell_id = string_format(STRING_BUFFER(cell_id_buf), STRING_CONST("new_cell_%d"), column_index);
+        ImGui::PushID(cell_id.str, cell_id.str + cell_id.length);
+        ImGui::BeginGroup();
+
+        const ImRect cell_rect = ImGui::TableGetCellBgRect(ct, i);
+        const ImVec2 cell_min = ImVec2(cell_rect.Min.x, cell_rect.Min.y);
+        const ImVec2 cell_max = ImVec2(
+            cell_rect.Min.x + cell_rect.GetWidth(),
+            cell_rect.Min.y + cell_rect.GetHeight());
+        _table_last_cell_rect.Min = cell_min;
+        _table_last_cell_rect.Max = cell_max;
+
+        //ImDrawList* dl = ImGui::GetWindowDrawList();
+        //dl->AddRectFilled(cell_min, cell_max, BACKGROUND_NEW_ROW_COLOR, 0, 0);
+
+        column.flags |= COLUMN_ADD_NEW_ELEMENT | COLUMN_RENDER_ELEMENT;
+        table_cell_t cell = column.fetch_value(element, &column);
+        column.flags &= ~(COLUMN_ADD_NEW_ELEMENT | COLUMN_RENDER_ELEMENT);
+
+        ImGui::EndGroup();
+        ImGui::PopID();
+
+        if (cell.event == TABLE_CELL_EVENT_NEW_ELEMENT)
+            return true;
+    }
+
+    // Draw some new row separator. This is a bit hacky, but it works.
+    ImGui::TableNextRow(0, 1);
+    ImGui::Separator();
+    ImGui::TableNextRow(0, 1);
+
+    return false;
+}
+
 FOUNDATION_STATIC void table_render_row_element(table_t* table, int element_index, int column_count)
 {
     const auto font_height = table_default_row_height();
     
-    row_t& row = table->rows[element_index];
+    table_row_t& row = table->rows[element_index];
     table_element_ptr_t element = row.element;
 
     row.hovered = false;
@@ -731,7 +809,7 @@ FOUNDATION_STATIC void table_render_row_element(table_t* table, int element_inde
     const size_t max_column_count = sizeof(table->columns) / sizeof(table->columns[0]);
     for (int i = 0, column_index = 0; i < max_column_count; ++i)
     {
-        column_t& column = table->columns[i];
+        table_column_t& column = table->columns[i];
         if (column_index == column_count)
             break;
         else if (!column.used)
@@ -741,8 +819,6 @@ FOUNDATION_STATIC void table_render_row_element(table_t* table, int element_inde
         if (!ImGui::TableNextColumn())
             continue;
 
-        //has_wrapping_text |= (column.flags & COLUMN_TEXT_WRAPPING) != 0;
-
         if ((column.flags & COLUMN_DYNAMIC_VALUE) && !row.fetched && table->update)
             row.fetched = table->update(element);
 
@@ -750,7 +826,8 @@ FOUNDATION_STATIC void table_render_row_element(table_t* table, int element_inde
         string_t cell_id = string_format(STRING_BUFFER(cell_id_buf), STRING_CONST("cell_%d_%d"), element_index, column_index);
         ImGui::PushID(cell_id.str, cell_id.str + cell_id.length);
 
-        cell_t cell = column.fetch_value ? column.fetch_value(element, &column) : cell_t{};
+        ImGui::BeginGroup();
+        table_cell_t cell = column.fetch_value ? column.fetch_value(element, &column) : table_cell_t{};
         string_const_t str_value = cell_value_to_string(cell, column);
 
         column_flags_t alignment_flags = column.flags & COLUMN_ALIGNMENT_MASK;
@@ -810,9 +887,11 @@ FOUNDATION_STATIC void table_render_row_element(table_t* table, int element_inde
         else
         {
             #if ENABLE_ROW_HEIGHT_MIDDLE
-            if ((column.flags & COLUMN_VALIGN_TOP) == 0)
-                ImGui::SetCursorPosY(middle_row_cursor_position);
+            //if ((column.flags & COLUMN_VALIGN_TOP) == 0)
+                //ImGui::SetCursorPosY(middle_row_cursor_position);
             #endif
+
+            ImGui::AlignTextToFramePadding();
 
             if (alignment_flags & COLUMN_RIGHT_ALIGN)
                 table_cell_right_aligned_label(STRING_ARGS(str_value));
@@ -820,13 +899,19 @@ FOUNDATION_STATIC void table_render_row_element(table_t* table, int element_inde
                 table_cell_middle_aligned_label(STRING_ARGS(str_value));
             else
                 cell_label(str_value);
+
+            ImGui::SameLine();
+            ImGui::Dummy({ImGui::GetContentRegionAvail().x, 0});
+
         }
 
         if (cell.style.types & COLUMN_COLOR_TEXT)
             ImGui::PopStyleColor();
 
+        ImGui::EndGroup();
+
         // Handle tooltip
-        if (ImGui::IsItemHovered())
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal))
         {
             if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
             {
@@ -852,11 +937,13 @@ FOUNDATION_STATIC void table_render_row_element(table_t* table, int element_inde
                 column.tooltip(element, &column, &cell);
                 ImGui::EndTooltip();
             }
-            else if (table_column_is_number_value_trimmed(column, cell))
+            else if (!column.tooltip && table_column_is_number_value_trimmed(column, cell))
             {
                 ImGui::SetTooltip("%lg", cell.number);
             }
         }
+
+        ImGui::PopID();
 
         // Handle contextual menu
         if (column.context_menu && ImGui::BeginPopupContextItem(cell_id.str))
@@ -871,11 +958,6 @@ FOUNDATION_STATIC void table_render_row_element(table_t* table, int element_inde
             ImGui::Dummy(ImVec2(0, 0));
             ImGui::EndPopup();
         }
-
-        ImGui::PopID();
-
-        if (*(uintptr_t**)element == nullptr)
-            break;
 
         #if ENABLE_ROW_HEIGHT_MIDDLE
         const float row_cursor_height = (ImGui::GetCursorPosY() - row_cursor_y) - 4.0f;
@@ -926,6 +1008,13 @@ FOUNDATION_STATIC void table_render_elements(table_t* table, int column_count)
     //TIME_TRACKER(0.008, "Render table %.*s", STRING_FORMAT(table->name));
 
     ImGuiTable* imtable = ImGui::GetCurrentTable();
+
+    if (table->flags & TABLE_ADD_NEW_ROW)
+    {
+        const size_t element_count_before = table->element_count;
+        if (table_render_add_new_row_element(table, column_count))
+            return;
+    }
 
     ImGuiListClipper clipper;
     clipper.Begin(table->rows_visible_count, table->row_fixed_height);
@@ -1003,6 +1092,10 @@ void table_render(table_t* table, table_element_ptr_const_t elements, const int 
     if (!ImGui::BeginTable(table->name.str, column_count, flags, outer_size))
         return;
 
+    auto& io = ImGui::GetIO();
+    const float old_hovered_delay = io.HoverDelayNormal;
+    io.HoverDelayNormal = 0.5f;
+
     // Make top row always visible
     ImGui::TableSetupScrollFreeze(table->column_freeze, 1);
 
@@ -1016,6 +1109,8 @@ void table_render(table_t* table, table_element_ptr_const_t elements, const int 
 
     table_handle_horizontal_scrolling(table);
 
+    io.HoverDelayNormal = old_hovered_delay;
+
     ImGui::EndTable();
 }
 
@@ -1028,20 +1123,21 @@ void table_clear_columns(table_t* table)
     }
 }
 
-column_t& table_add_column(table_t* table,
+table_column_t& table_add_column(table_t* table,
     const char* name, size_t name_length,
     const cell_fetch_value_handler_t& fetch_value_handler,
     column_format_t format /*= COLUMN_FORMAT_TEXT*/,
     column_flags_t flags /*= COLUMN_OPTIONS_NONE*/)
 {
-    column_t* c = nullptr;
     const size_t column_count = sizeof(table->columns) / sizeof(table->columns[0]);
     for (int i = 0; i < column_count; ++i)
     {
-        if (!table->columns[i].used)
+        table_column_t* c = table->columns + i;
+        if (!c->used)
         {
-            c = &table->columns[i];
             c->used = true;
+            c->table = table;
+
             if ((table->flags & TABLE_LOCALIZATION_CONTENT) == 0 || (flags & COLUMN_NO_LOCALIZATION) == COLUMN_NO_LOCALIZATION)
             {
                 c->name = string_table_encode(name, name_length);
@@ -1051,6 +1147,7 @@ column_t& table_add_column(table_t* table,
                 string_const_t trname = tr(name, name_length, false);
                 c->name = string_table_encode(STRING_ARGS(trname));
             }
+
             c->format = format;
             c->flags = flags;
             c->fetch_value = fetch_value_handler;
@@ -1076,4 +1173,107 @@ float table_default_row_height()
 void table_set_search_filter(table_t* table, const char* filter, size_t filter_length)
 {
     table->search_filter = { filter, filter_length };
+}
+
+FOUNDATION_STATIC void table_export_string_value(string_builder_t* sb, const char* str, size_t length)
+{
+    char csv_column_name_buffer[1024];
+    string_t csv_column_name = string_copy(STRING_BUFFER(csv_column_name_buffer), str, length);
+
+    // Escape " into ""
+    csv_column_name = string_replace(STRING_ARGS(csv_column_name), sizeof(csv_column_name_buffer), STRING_CONST("\""), STRING_CONST("\"\""), true);
+
+    // Escape column name if it contains comma
+    if (string_find(csv_column_name.str, csv_column_name.length, ';', 0) != STRING_NPOS || string_find(csv_column_name.str, csv_column_name.length, '\"', 0) != STRING_NPOS)
+    {
+        string_builder_append(sb, '"');
+        string_builder_append(sb, csv_column_name.str, csv_column_name.length);
+        string_builder_append(sb, '"');
+    }
+    else
+        string_builder_append(sb, csv_column_name.str, csv_column_name.length);
+}
+
+bool table_export_csv(table_t* table, const char* path, size_t length)
+{
+    string_builder_t* sb = string_builder_allocate();
+    
+    // Write header
+    for (int i = 0; i < ARRAY_COUNT(table->columns); ++i)
+    {
+        if (!table->columns[i].used)
+            continue;
+
+        if (i > 0)
+            string_builder_append(sb, ';');
+
+        string_const_t name = SYMBOL_CONST(table->columns[i].name);
+        table_export_string_value(sb, STRING_ARGS(name));
+    }
+
+    string_builder_append_new_line(sb);
+
+    // Write rows
+    for (int i = 0, end = table->rows_visible_count; i < end; ++i)
+    {
+        const table_row_t* row = table->rows + i;
+
+        for (int j = 0; j < ARRAY_COUNT(table->columns); ++j)
+        {
+            if (!table->columns[j].used)
+                continue;
+
+            table_column_t* column = table->columns + j;
+            table_cell_t cell_value = column->fetch_value.invoke(row->element, column);
+
+            if (j > 0)
+                string_builder_append(sb, ';');
+
+            if (cell_format_is_numeric(cell_value))
+            {
+                double value = cell_value.number;
+                if (column->format == COLUMN_FORMAT_PERCENTAGE)
+                    value /= 100.0;
+                char number_buffer[64];
+                string_t nstr = string_from_real(STRING_BUFFER(number_buffer), value, 0, 0, 0);
+                nstr = string_replace(STRING_ARGS(nstr), sizeof(number_buffer), STRING_CONST("."), STRING_CONST(","), true);
+                string_builder_append(sb, STRING_ARGS(nstr));
+            }
+            else if (cell_value.format == COLUMN_FORMAT_BOOLEAN)
+            {
+                string_const_t str = cell_value.number ? CTEXT("1") : CTEXT("0");
+                table_export_string_value(sb, STRING_ARGS(str));
+            }
+            else if (cell_value.format == COLUMN_FORMAT_SYMBOL)
+            {
+                string_const_t str = SYMBOL_CONST(cell_value.symbol);
+                table_export_string_value(sb, STRING_ARGS(str));
+            }
+            else if (cell_value.format == COLUMN_FORMAT_TEXT)
+            {
+                table_export_string_value(sb, STRING_LENGTH(cell_value.text));
+            }
+            else if (cell_value.format == COLUMN_FORMAT_DATE)
+            {
+                char date_buffer[64];
+                string_t dstr = string_from_date(STRING_BUFFER(date_buffer), cell_value.time);
+                table_export_string_value(sb, STRING_ARGS(dstr));
+            }
+        }
+
+        string_builder_append_new_line(sb);
+    }
+
+    // Write to file
+    stream_t* stream = stream_open(path, length, STREAM_OUT | STREAM_CREATE | STREAM_TRUNCATE);
+    if (stream)
+    {
+        string_const_t text = string_builder_text(sb);
+        stream_write_string(stream, STRING_ARGS(text));
+        stream_deallocate(stream);
+    }
+
+    string_builder_deallocate(sb);
+
+    return true;
 }

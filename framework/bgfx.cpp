@@ -81,7 +81,6 @@ struct BgfxCallbackHandler : bgfx::CallbackI
     {
         if (environment_argument("verbose"))
         {
-            ignore_logs = false;
             ignore_logs = environment_argument("bgfx-ignore-logs");
         }
     }
@@ -89,18 +88,19 @@ struct BgfxCallbackHandler : bgfx::CallbackI
 
     virtual void fatal(const char* _filePath, uint16_t _line, bgfx::Fatal::Enum _code, const char* _str) override
     {
-        log_errorf(HASH_BGFX, ERROR_INTERNAL_FAILURE, STRING_CONST("BGFX Failure (%d): %s\n\t%s(%hu)"), _code, _str, _filePath, _line);
-        FOUNDATION_ASSERT_FAIL(_str);
-        process_exit(_code);
+        log_panicf(HASH_BGFX, ERROR_INTERNAL_FAILURE, STRING_CONST("BGFX Failure (%d): %s\n\t%s(%hu)"), _code, _str, _filePath, _line);
     }
 
     virtual void traceVargs(const char* _filePath, uint16_t _line, const char* _format, va_list _argList) override
     {
         if (ignore_logs)
             return;
-        string_t trace_msg = string_allocate_vformat(_format, string_length(_format), _argList);
-        log_infof(HASH_BGFX, STRING_CONST("%.*s"), (int)trace_msg.length - 1, trace_msg.str);
-        string_deallocate(trace_msg.str);
+        static thread_local char trace_buffer[4096];
+        const size_t fmt_length = string_length(_format);
+        string_t trace_msg = string_vformat(STRING_BUFFER(trace_buffer), _format, fmt_length, _argList);
+        if (trace_msg.length > 0 && trace_msg.str[trace_msg.length - 1] == '\n')
+            --trace_msg.length;
+        log_info(HASH_BGFX, STRING_ARGS(trace_msg));
     }
 
     virtual void profilerBegin(const char* _name, uint32_t _abgr, const char* _filePath, uint16_t _line) override
@@ -185,14 +185,6 @@ FOUNDATION_STATIC bool bgfx_create_fonts_texture(GLFWwindow* window)
         io.Fonts->AddFontDefault(&config);
     }
 
-//    // Load emoji font if never done
-//    static ImWchar ranges[] = { 0x1, (ImWchar)0x1FFFF, 0 };
-//    static ImFontConfig cfg;
-//    cfg.OversampleH = cfg.OversampleV = 1;
-//    cfg.MergeMode = true;
-//    //cfg.FontBuilderFlags |= ImGuiFreeTypeBuilderFlags_LoadColor;
-//    ImGui::GetIO().Fonts->AddFontFromFileTTF("C:\\work\\wallet\\resources\\seguiemj.ttf", 16.0f, &cfg, ranges);
-
     // Build texture atlas
     int width, height;
     unsigned char* pixels;
@@ -223,23 +215,23 @@ FOUNDATION_STATIC bool bgfx_create_device_objects(GLFWwindow* window)
         .add(bgfx::Attrib::Color0, 4, bgfx::AttribType::Uint8, true)
         .end();
 
-    _bgfx_imgui_attrib_location_tex =
-        bgfx::createUniform("g_AttribLocationTex", bgfx::UniformType::Sampler);
+    _bgfx_imgui_attrib_location_tex = bgfx::createUniform("g_AttribLocationTex", bgfx::UniformType::Sampler);
 
     return bgfx_create_fonts_texture(window);
 }
 
 FOUNDATION_STATIC void bgfx_invalidate_device_objects()
 {
-    if (bgfx::isValid(_bgfx_imgui_attrib_location_tex))
-        bgfx::destroy(_bgfx_imgui_attrib_location_tex);
     if (bgfx::isValid(_bgfx_imgui_shader_handle))
         bgfx::destroy(_bgfx_imgui_shader_handle);
 
+    if (bgfx::isValid(_bgfx_imgui_attrib_location_tex))
+        bgfx::destroy(_bgfx_imgui_attrib_location_tex);
+
     if (bgfx::isValid(_bgfx_imgui_font_texture))
     {
-        bgfx::destroy(_bgfx_imgui_font_texture);
         ImGui::GetIO().Fonts->TexID = 0;
+        bgfx::destroy(_bgfx_imgui_font_texture);
         _bgfx_imgui_font_texture.idx = bgfx::kInvalidHandle;
     }
 }
@@ -250,7 +242,7 @@ void bgfx_init_view(int imgui_view)
 
     // Set view 0 to the same dimensions as the window and to clear the color buffer.
     const bgfx::ViewId kClearView = 0;
-    bgfx::setViewClear(kClearView, BGFX_CLEAR_COLOR);
+    bgfx::setViewClear(kClearView, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH);
     bgfx::setViewRect(kClearView, 0, 0, bgfx::BackbufferRatio::Equal);
 }
 
@@ -272,18 +264,10 @@ void bgfx_new_frame(GLFWwindow* window, int width, int height)
     if (width != bWidth || height != bHeight)
     {
         bWidth = width; bHeight = height;
-        bgfx::reset(bWidth, bHeight, 
-        #if BUILD_TESTS
-            main_is_running_tests() ? BGFX_RESET_NONE :
-        #endif
-            (BGFX_RESET_VSYNC | BGFX_RESET_HIDPI));
+        bgfx::reset(bWidth, bHeight, BGFX_RESET_NONE);
     }
 
-    bgfx::setViewClear(kClearView, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH);
-    bgfx::setViewClear(_bgfx_imgui_view, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH);
-
     bgfx::touch(kClearView);
-    bgfx::touch(_bgfx_imgui_view);
 }
 
 // This is the main rendering function that you have to implement and call after
@@ -307,6 +291,7 @@ void bgfx_render_draw_lists(ImDrawData* draw_data, int fb_width, int fb_height)
 
     bgfx::setViewName(_bgfx_imgui_view, "UI");
     bgfx::setViewMode(_bgfx_imgui_view, bgfx::ViewMode::Sequential);
+    bgfx::setViewClear(_bgfx_imgui_view, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH);
 
     // Setup viewport, orthographic projection matrix
     float ortho[16];
@@ -316,7 +301,8 @@ void bgfx_render_draw_lists(ImDrawData* draw_data, int fb_width, int fb_height)
     bgfx::setViewRect(_bgfx_imgui_view, 0, 0, fb_width, fb_height);
 
     // Render command lists
-    for (int n = 0; n < draw_data->CmdListsCount; n++) {
+    for (int n = 0; n < draw_data->CmdListsCount; n++) 
+    {
         const ImDrawList* cmd_list = draw_data->CmdLists[n];
 
         bgfx::TransientVertexBuffer tvb;
@@ -327,8 +313,7 @@ void bgfx_render_draw_lists(ImDrawData* draw_data, int fb_width, int fb_height)
 
         if (numIndices != 0 && numVertices != 0)
         {
-            if ((numVertices != bgfx::getAvailTransientVertexBuffer(
-                numVertices, _bgfx_imgui_vertex_layout)) ||
+            if ((numVertices != bgfx::getAvailTransientVertexBuffer(numVertices, _bgfx_imgui_vertex_layout)) ||
                 (numIndices != bgfx::getAvailTransientIndexBuffer(numIndices))) {
                 // not enough space in transient buffer, quit drawing the rest...
                 break;
@@ -385,7 +370,7 @@ bgfx::CallbackI* bgfx_system_callback_handler()
 
 void bgfx_initialize(GLFWwindow* window)
 {
-    if (!environment_argument("render-thread"))
+    if (!FOUNDATION_PLATFORM_WINDOWS || !environment_argument("render-thread"))
     {
         // Call bgfx::renderFrame before bgfx::init to signal to bgfx not to create a render thread.
         // Most graphics APIs must be used on the same thread that created the window.
@@ -402,6 +387,8 @@ void bgfx_initialize(GLFWwindow* window)
         bgfxInit.platformData.ndt = glfwGetX11Display();
     #elif FOUNDATION_PLATFORM_MACOS
         bgfxInit.type = bgfx::RendererType::Metal;
+    #elif FOUNDATION_PLATFORM_WINDOWS
+        bgfxInit.type = bgfx::RendererType::Direct3D11;
     #endif
     bgfxInit.platformData.nwh = glfw_platform_window_handle(window);
 
@@ -410,6 +397,8 @@ void bgfx_initialize(GLFWwindow* window)
     bgfxInit.resolution.width = (uint32_t)width;
     bgfxInit.resolution.height = (uint32_t)height;
     bgfxInit.resolution.reset = main_is_running_tests() ? BGFX_RESET_NONE : (BGFX_RESET_VSYNC | BGFX_RESET_HIDPI);
+    bgfxInit.debug = false;
+    bgfxInit.profile = false;
     
     log_infof(HASH_BGFX, STRING_CONST("Initializing BGFX (%d)..."), (int)bgfxInit.type);
     if (!bgfx::init(bgfxInit))

@@ -54,10 +54,6 @@ Index of this file:
 #include IMGUI_USER_CONFIG
 #endif
 #include "imconfig.h"
-// ###############################################################################
-#include "IconsMaterialDesign.h"
-#define THIN_SPACE "\xe2\x80\x89"	// U+2009
-// ###############################################################################
 
 #ifndef IMGUI_DISABLE
 
@@ -116,6 +112,7 @@ Index of this file:
 #ifdef _MSC_VER
 #pragma warning (push)
 #pragma warning (disable: 26495)    // [Static Analyzer] Variable 'XXX' is uninitialized. Always initialize a member variable (type.6).
+#pragma warning (disable: 26477)    // [Static Analyzer]  Utilisez 'nullptr' à la place de 0 ou NULL (es.47).
 #endif
 #if defined(__clang__)
 #pragma clang diagnostic push

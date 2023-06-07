@@ -106,12 +106,89 @@ FOUNDATION_STATIC void query_curl_cleanup()
     }
 }
 
+FOUNDATION_STATIC void* query_curl_malloc_cb(size_t size)
+{
+    return memory_allocate(HASH_CURL, size, 0, MEMORY_PERSISTENT);
+}
+
+FOUNDATION_STATIC void query_curl_free_cb(void* ptr)
+{
+    memory_deallocate(ptr);
+}
+
+FOUNDATION_STATIC void* query_curl_realloc_cb(void* ptr, size_t size)
+{
+    memory_context_push(HASH_CURL);
+    size_t oldsize = memory_size(ptr);
+    void* curl_mem = memory_reallocate(ptr, size, 0, oldsize, MEMORY_PERSISTENT);
+    memory_context_pop();
+    return curl_mem;
+}
+
+FOUNDATION_STATIC char* query_curl_strdup_cb(const char* str)
+{
+    const size_t len = string_length(str);
+    const size_t capacity = len + 1;
+    char* curl_str = (char*)memory_allocate(HASH_CURL, capacity, 0, MEMORY_PERSISTENT);
+    return string_copy(curl_str, capacity, str, len).str;
+}
+
+FOUNDATION_STATIC void* query_curl_calloc_cb(size_t nmemb, size_t size)
+{
+    return memory_allocate(HASH_CURL, nmemb * size, min(8U, to_uint(nmemb)), MEMORY_PERSISTENT | MEMORY_ZERO_INITIALIZED);
+}
+
+FOUNDATION_STATIC void query_start_job_to_cleanup_cache()
+{
+    if (!main_is_interactive_mode())
+        return;
+
+    TIME_TRACKER("query_start_job_to_cleanup_cache");
+
+    dispatch_fire([]()
+    {
+        // List all files under cache
+        string_const_t cache_dir = session_get_user_file_path(STRING_CONST("cache"));
+        if (!fs_is_directory(STRING_ARGS(cache_dir)))
+            return;
+        
+        string_t* cache_file_names = fs_matching_files(STRING_ARGS(cache_dir), STRING_CONST("*.json"), false);
+        for (unsigned i = 0, end = array_size(cache_file_names); i < end; ++i)
+        {
+            if (thread_try_wait(0))
+                break;
+
+            char cache_path_buffer[BUILD_MAX_PATHLEN];
+            const string_t& cache_file_name = cache_file_names[i];
+            string_t cache_path = path_concat(STRING_BUFFER(cache_path_buffer), STRING_ARGS(cache_dir), STRING_ARGS(cache_file_name));
+
+            const double EXPIRE_AFTER_DAYS = 31;
+            const tick_t last_modified = fs_last_modified(cache_path);
+            const tick_t system_time = time_system();
+            const uint64_t elapsed_seconds = (uint64_t)((system_time - last_modified) / 1000.0);
+            const double days_old = elapsed_seconds / 86400.0;
+            if (days_old > EXPIRE_AFTER_DAYS)
+            {
+                if (fs_remove_file(cache_path))
+                {
+                    log_debugf(HASH_QUERY, STRING_CONST("File %.*s was removed from query cache (%.0lf days old)"), STRING_FORMAT(cache_path), days_old);
+                }                
+            }
+        }
+        string_array_deallocate(cache_file_names);
+    });
+}
+
 FOUNDATION_STATIC curl_slist* query_create_user_agent_header_list()
 {
     char user_agent_header[256];
     const application_t* app = environment_application();
-    string_format(STRING_BUFFER(user_agent_header), STRING_CONST("user-agent: %.*s/%hu.%hu"),
-        STRING_FORMAT(app->short_name), app->version.sub.major, app->version.sub.minor);
+
+    // Get user name
+    string_const_t user_name = environment_username();
+
+    string_format(STRING_BUFFER(user_agent_header), STRING_CONST("user-agent: %.*s/%hu.%hu.%u/%.*s (%s)"),
+        STRING_FORMAT(app->short_name), app->version.sub.major, app->version.sub.minor, app->version.sub.revision, STRING_FORMAT(user_name), FOUNDATION_PLATFORM_DESCRIPTION);
     curl_slist* header_chunk = curl_slist_append(nullptr, user_agent_header);
     return header_chunk;
 }
@@ -119,6 +196,7 @@ FOUNDATION_STATIC curl_slist* query_create_user_agent_header_list()
 FOUNDATION_STATIC curl_slist* query_create_common_header_list()
 {
     curl_slist* header_chunk = query_create_user_agent_header_list();
+    //header_chunk = curl_slist_append(header_chunk, "Accept: application/json");
     header_chunk = curl_slist_append(header_chunk, "Content-Type: application/json");
     return header_chunk;
 }
@@ -133,6 +211,7 @@ FOUNDATION_STATIC CURL* query_create_curl_request()
     {
         curl_easy_setopt(req, CURLOPT_NOSIGNAL, 1L);
         curl_easy_setopt(req, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_WHATEVER);
+        curl_easy_setopt(req, CURLOPT_FOLLOWLOCATION, 1L);
 
         if (environment_argument("verbose"))
             curl_easy_setopt(req, CURLOPT_VERBOSE, 1L);
@@ -330,6 +409,12 @@ bool query_execute_json(const char* query, query_format_t format, void(*json_cal
     }, invalid_cache_query_after_seconds);
 }
 
+struct query_execute_args_t
+{
+    json_object_t json{};  
+    query_callback_t callback{};
+};
+
 bool query_execute_json(const char* query, string_t* headers, config_handle_t data, const query_callback_t& callback)
 {
     FOUNDATION_ASSERT(query);
@@ -360,22 +445,25 @@ bool query_execute_json(const char* query, string_t* headers, config_handle_t da
         query_success = req.execute(query);
     } 
 
-    json_object_t json = json_parse(req.json);
-    json.query = string_to_const(query);
-    json.status_code = req.response_code;
-    json.error_code = req.status > 0 ? req.status : (json.status_code >= 400 ? CURL_LAST : CURLE_OK);
+    query_execute_args_t args{};
+    args.callback = callback;
+    args.json = json_parse(req.json);
+    args.json.query = string_to_const(query);
+    args.json.status_code = req.response_code;
+    args.json.error_code = req.status > 0 ? req.status : (args.json.status_code >= 400 ? CURL_LAST : CURLE_OK);
 
-    try
+    exception_try([](void* args)
     {
-        callback(json);
+        query_execute_args_t* qargs = (query_execute_args_t*)args;
+        qargs->callback(qargs->json);
         signal_thread();
-    }
-    catch (...)
+        return 0;
+    }, &args, [](void* args, const char* file, size_t length)
     {
-        log_errorf(HASH_QUERY, ERROR_EXCEPTION, STRING_CONST("Failed to execute JSON callback for %s [%.*s...]"), query, 64, json.buffer);
-        curl_slist_free_all(header_chunk);
-        return false;
-    }
+        query_execute_args_t* qargs = (query_execute_args_t*)args;
+        log_errorf(HASH_QUERY, ERROR_EXCEPTION, STRING_CONST("Failed to execute JSON callback for %.*s [%.*s...]"), 
+            STRING_FORMAT(qargs->json.query), 64, qargs->json.buffer);
+    }, STRING_CONST("query"));
     
     curl_slist_free_all(header_chunk);
     return req.status == CURLE_OK && req.response_code < 400;
@@ -386,10 +474,22 @@ bool query_execute_json(const char* query, string_t* headers, const query_callba
     return query_execute_json(query, headers, config_null(), callback);
 }
 
+FOUNDATION_STATIC bool query_is_format_json_cachable(query_format_t format, uint64_t invalid_cache_query_after_seconds)
+{
+    if (invalid_cache_query_after_seconds == 0)
+        return false;
+    if (format == FORMAT_JSON_CACHE)
+        return true;
+    if (format == FORMAT_JSON_WITH_ERROR)
+        return true;
+
+    return false;
+}
+
 FOUNDATION_STATIC bool query_is_cache_file_valid(const char* query, query_format_t format, uint64_t invalid_cache_query_after_seconds, string_const_t& cache_file_path)
 {
     cache_file_path = string_const_t{ nullptr, 0 };
-    if (format != FORMAT_JSON_CACHE)
+    if (!query_is_format_json_cachable(format , invalid_cache_query_after_seconds))
         return false;
 
     char query_hash_string_buffer[32] = { 0 };
@@ -511,7 +611,7 @@ bool query_execute_json(const char* query, query_format_t format, string_t body,
     bool warning_logged = false;
     const bool has_body_content = !string_is_null(body);
     string_const_t cache_file_path{ nullptr, 0 };
-    if (format == FORMAT_JSON_CACHE && !has_body_content)
+    if (invalid_cache_query_after_seconds > 0 && !has_body_content)
     {
         if (query_is_cache_file_valid(query, format, invalid_cache_query_after_seconds, cache_file_path))
         {
@@ -541,6 +641,7 @@ bool query_execute_json(const char* query, query_format_t format, string_t body,
                         }
                         catch (...)
                         {
+                            fs_remove_file(cache_file_path);
                             log_errorf(HASH_QUERY, ERROR_EXCEPTION, STRING_CONST("Failed to execute JSON callback for %s [%.*s...]"), query, 64, json.buffer);
                             return false;
                         }
@@ -563,6 +664,7 @@ bool query_execute_json(const char* query, query_format_t format, string_t body,
         else
         {
             log_debugf(HASH_QUERY, STRING_CONST("Updating query %s"), query);
+            warning_logged = true;
         }
     }
 
@@ -581,13 +683,13 @@ bool query_execute_json(const char* query, query_format_t format, string_t body,
         json.status_code = req.response_code;
         json.error_code = req.status > 0 ? req.status : (json.status_code >= 400 ? CURL_LAST : CURLE_OK);
 
-        if (cache_file_path.length > 0 && format == FORMAT_JSON_CACHE && req.status == CURLE_OK && json.token_count > 0)
+        if (cache_file_path.length > 0 && invalid_cache_query_after_seconds > 0 && req.status == CURLE_OK && json.token_count > 0)
         {
             stream_t* cache_file_stream = fs_open_file(STRING_ARGS(cache_file_path), STREAM_CREATE | STREAM_OUT | STREAM_TRUNCATE);
             if (cache_file_stream == nullptr)
                 return false;
 
-            log_debugf(0, STRING_CONST("Writing query %.*s to %.*s"), STRING_FORMAT(query_copy), STRING_FORMAT(cache_file_path));
+            //log_debugf(0, STRING_CONST("Writing query %.*s to %.*s"), STRING_FORMAT(query_copy), STRING_FORMAT(cache_file_path));
             stream_write_string(cache_file_stream, json.buffer, string_length(json.buffer));
             stream_deallocate(cache_file_stream);
         }
@@ -660,7 +762,6 @@ bool query_execute_async_json(const char* query, query_format_t format, const qu
 
     FOUNDATION_ASSERT(string_equal(query, 4, STRING_CONST("http")));
     const size_t query_length = string_length(query);
-    //log_debugf(HASH_QUERY, STRING_CONST("Queueing GET query [%zu] %.*s"), _fetcher_requests.size(), (int)query_length, query);
     json_query_request_t request;    
     request.query = string_clone(query, query_length);
     request.format = format;
@@ -800,8 +901,7 @@ stream_t* query_execute_download_file(const char* query)
 
     if (response_code >= 400)
     {
-        log_warnf(HASH_QUERY, WARNING_NETWORK,
-            STRING_CONST("Failed to download file %s (%d)"), query, (int)response_code);
+        log_debugf(HASH_QUERY, STRING_CONST("Failed to download file %s (%d)"), query, (int)response_code);
 
         stream_deallocate(download_stream);
         return nullptr;
@@ -814,47 +914,15 @@ stream_t* query_execute_download_file(const char* query)
 // # SYSTEM
 //
 
-FOUNDATION_STATIC void* curl_malloc_cb(size_t size)
-{
-    return memory_allocate(HASH_CURL, size, 0, MEMORY_PERSISTENT);
-}
-
-FOUNDATION_STATIC void curl_free_cb(void* ptr)
-{
-    memory_deallocate(ptr);
-}
-
-FOUNDATION_STATIC void* curl_realloc_cb(void* ptr, size_t size)
-{
-    memory_context_push(HASH_CURL);
-    size_t oldsize = memory_size(ptr);
-    void* curl_mem = memory_reallocate(ptr, size, 0, oldsize, MEMORY_PERSISTENT);
-    memory_context_pop();
-    return curl_mem;
-}
-
-FOUNDATION_STATIC char* curl_strdup_cb(const char* str)
-{
-    const size_t len = string_length(str);
-    const size_t capacity = len + 1;
-    char* curl_str = (char*)memory_allocate(HASH_CURL, capacity, 0, MEMORY_PERSISTENT);
-    return string_copy(curl_str, capacity, str, len).str;
-}
-
-FOUNDATION_STATIC void* curl_calloc_cb(size_t nmemb, size_t size)
-{
-    return memory_allocate(HASH_CURL, nmemb * size, min(8U, to_uint(nmemb)), MEMORY_PERSISTENT | MEMORY_ZERO_INITIALIZED);
-}
-
 void query_initialize()
 {
     if (_initialized)
         return;
         
     #if BUILD_ENABLE_MEMORY_TRACKER
-    curl_global_init_mem(CURL_GLOBAL_DEFAULT, curl_malloc_cb,
-        curl_free_cb, curl_realloc_cb,
-        curl_strdup_cb, curl_calloc_cb);
+    curl_global_init_mem(CURL_GLOBAL_DEFAULT, query_curl_malloc_cb,
+        query_curl_free_cb, query_curl_realloc_cb,
+        query_curl_strdup_cb, query_curl_calloc_cb);
     #endif
 
     CURLcode res = curl_global_init(CURL_GLOBAL_DEFAULT);
@@ -888,6 +956,8 @@ void query_initialize()
     #if !BUILD_DEBUG
         log_set_suppress(HASH_QUERY, ERRORLEVEL_INFO);
     #endif
+
+    query_start_job_to_cleanup_cache();
 }
 
 void query_shutdown()
@@ -904,10 +974,20 @@ void query_shutdown()
     const size_t thread_count = sizeof(_fetcher_threads) / sizeof(_fetcher_threads[0]);
     for (size_t i = 0; i < thread_count; ++i)
     {
+        tick_t timeout = time_current();
         while (thread_is_running(_fetcher_threads[i]))
         {
             _fetcher_requests.signal();
             thread_signal(_fetcher_threads[i]);
+
+            const double KILL_THREAD_AFTER_SECONDS = 10.0;
+            if (time_elapsed(timeout) > KILL_THREAD_AFTER_SECONDS)
+            {
+                string_const_t tname = thread_name(_fetcher_threads[i]);
+                log_warnf(HASH_QUERY, WARNING_SUSPICIOUS,
+                    STRING_CONST("Query thread %.*s (%d) did not exit within 5 seconds, killing it..."), STRING_FORMAT(tname), (int)i);
+                thread_kill(_fetcher_threads[i]);
+            }
         }
         thread_join(_fetcher_threads[i]);
     }

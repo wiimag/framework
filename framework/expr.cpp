@@ -11,6 +11,9 @@
 #include <framework/module.h>
 #include <framework/profiler.h>
 #include <framework/dispatcher.h>
+#include <framework/plot_expr.h>
+#include <framework/table_expr.h>
+#include <framework/array.h>
 
 #include <foundation/random.h>
 #include <foundation/system.h>
@@ -26,6 +29,17 @@ static thread_local expr_var_list_t _global_vars = { 0 };
 static thread_local const expr_result_t** _expr_lists = nullptr;
 static expr_func_t* _expr_user_funcs = nullptr;
 static string_t* _expr_user_funcs_names = nullptr;
+
+typedef struct {
+    string_argument_type_t type; 
+    union {
+        uint64_t u;
+        bool b;
+        double n;
+        char* s;
+        void* ptr;
+    };
+} expr_format_supported_value_t;
 
 static struct {
     const expr_string_t token;
@@ -222,14 +236,6 @@ string_const_t expr_result_t::as_string(const char* fmt /*= nullptr*/) const
     return string_null();
 }
 
-expr_result_t expr_eval_symbol(string_table_symbol_t symbol)
-{
-    // FIXME: Here we assume that expression symbols are stored in the global string table
-    expr_result_t r(EXPR_RESULT_SYMBOL);
-    r.value = (double)symbol;
-    return r;
-}
-
 const expr_result_t* expr_eval_list(const expr_result_t* list)
 {
     if (list)
@@ -295,14 +301,28 @@ expr_result_t expr_eval_pair(const expr_result_t& key, const expr_result_t& valu
     return expr_result_t(kvp, 1ULL);
 }
 
-string_const_t expr_eval_get_string_arg(const vec_expr_t* args, size_t idx, const char* message)
+expr_result_t expr_eval_get_set_arg(const vec_expr_t* args, size_t idx, const char* message)
 {
     if (idx >= args->len)
         throw ExprError(EXPR_ERROR_INVALID_ARGUMENT, "Missing arguments: %s", message);
 
-    const expr_t& arg = vec_nth(args, idx);
-    if (arg.type != OP_VAR || arg.token.length == 0)
-        throw ExprError(EXPR_ERROR_INVALID_ARGUMENT, "Invalid argument %.*s: %s", STRING_FORMAT(arg.token), message);
+    expr_result_t value = expr_eval(&args->buf[idx]);
+    if (value.is_set())
+        return value;
+
+    if (value.is_null())
+        throw ExprError(EXPR_ERROR_INVALID_ARGUMENT, "Set cannot be null: %s", STRING_FORMAT(args->buf[idx].token), message);
+
+    // If we have a single value, wrap it in a set
+    expr_result_t* single_value_set = nullptr;
+    array_push(single_value_set, value);
+    return expr_eval_list(single_value_set);
+}
+
+string_const_t expr_eval_get_string_arg(const vec_expr_t* args, size_t idx, const char* message)
+{
+    if (idx >= args->len)
+        throw ExprError(EXPR_ERROR_INVALID_ARGUMENT, "Missing arguments: %s", message);
 
     return expr_eval(&args->buf[idx]).as_string();
 }
@@ -324,8 +344,63 @@ FOUNDATION_STATIC expr_result_t expr_eval_date_to_string(const expr_func_t* f, v
     return string_from_date(time);
 }
 
+FOUNDATION_STATIC tm expr_eval_tm_from_date(vec_expr_t* args)
+{
+    if (args->len != 1)
+        throw ExprError(EXPR_ERROR_INVALID_ARGUMENT, "Invalid date argument");
+
+    expr_result_t value = expr_eval(args->get(0));
+
+    tm datetm{};
+    if (value.type == EXPR_RESULT_SYMBOL)
+    {
+        string_const_t datestr = value.as_string();
+        string_to_date(datestr.str, datestr.length, &datetm);
+    }
+    else
+    {
+        time_t time = (time_t)value.as_number(0);
+        time_to_local(time, &datetm);
+    }
+
+    return datetm;
+}
+
+FOUNDATION_STATIC expr_result_t expr_eval_year_from_date(const expr_func_t* f, vec_expr_t* args, void* c)
+{
+    const tm ytm = expr_eval_tm_from_date(args);
+    return (double)ytm.tm_year + 1900;
+}
+
+FOUNDATION_STATIC expr_result_t expr_eval_day_from_date(const expr_func_t* f, vec_expr_t* args, void* c)
+{
+    const tm dtm = expr_eval_tm_from_date(args);
+    return (double)dtm.tm_mday;
+}
+
+FOUNDATION_STATIC expr_result_t expr_eval_month_from_date(const expr_func_t* f, vec_expr_t* args, void* c)
+{
+    const tm mtm = expr_eval_tm_from_date(args);
+    return (double)mtm.tm_mon + 1;
+}
+
 FOUNDATION_STATIC expr_result_t expr_eval_create_date(const expr_func_t* f, vec_expr_t* args, void* c)
 {
+    // Try to parse a date string with format YYYY-MM-DD
+    if (args->len == 1)
+    {
+        expr_result_t value = expr_eval(args->get(0));
+        if (value.type == EXPR_RESULT_SYMBOL)
+        {
+            string_const_t datestr = value.as_string();
+            if (datestr.length != 10)
+                throw ExprError(EXPR_ERROR_INVALID_ARGUMENT, "Invalid date string, must be YYYY-MM-DD");
+
+            return (double)string_to_date(datestr.str, datestr.length);
+        }
+    }
+
+    // Try to parse a date with individual arguments DATE(YYYY, MM, DD)
     if (args->len != 3)
         throw ExprError(EXPR_ERROR_INVALID_ARGUMENT, "Invalid argument count for DATE");
 
@@ -713,6 +788,221 @@ FOUNDATION_STATIC bool expr_set_global_var(const char* name, const expr_result_t
     return true;
 }
 
+FOUNDATION_STATIC expr_result_t expr_eval_string_lpad(const expr_func_t* f, vec_expr_t* args, void* c)
+{
+    string_const_t value = expr_eval_get_string_arg(args, 0, "Invalid value");
+
+    string_const_t padding = CTEXT(" ");
+    if (args->len > 1)
+        padding = expr_eval_get_string_arg(args, 1, "Invalid padding");
+
+    if (padding.length == 0)
+        return value;
+
+    size_t length = value.length + 1;
+    if (args->len > 2)
+        length = (size_t)expr_eval(args->get(2)).as_number(1);
+
+    if (length <= value.length)
+        return value;
+
+    const size_t capacity = length + 1;
+    string_t buffer = string_allocate(0, capacity);
+
+    // Repeat append the padding string until we've reached the desired length
+    while (buffer.length < length - value.length)
+    {
+        // Check if we can fit the padding string in the remaining space
+        if (buffer.length + padding.length > length - value.length)
+        {
+            // Append only the remaining space
+            buffer = string_append(STRING_ARGS(buffer), capacity, padding.str, length - value.length - buffer.length);
+            break;
+        }
+
+        buffer = string_append(STRING_ARGS(buffer), capacity, padding.str, padding.length);
+    }
+
+    buffer = string_append(STRING_ARGS(buffer), capacity, value.str, value.length);
+
+    expr_result_t padded = expr_result_t(string_to_const(buffer));
+    string_deallocate(buffer.str);
+
+    return padded;
+}
+
+FOUNDATION_STATIC expr_result_t expr_eval_string_rpad(const expr_func_t* f, vec_expr_t* args, void* c)
+{
+    string_const_t value = expr_eval_get_string_arg(args, 0, "Invalid value");
+
+    string_const_t padding = CTEXT("_");
+    if (args->len > 1)
+        padding = expr_eval_get_string_arg(args, 1, "Invalid padding");
+
+    if (padding.length == 0)
+        return expr_result_t(value);
+
+    size_t length = value.length + 1;
+    if (args->len > 2)
+        length = (size_t)expr_eval(args->get(2)).as_number(1);
+
+    if (length <= value.length)
+        return expr_result_t(value);
+
+    const size_t capacity = length + 1;
+    string_t buffer = string_allocate(0, capacity);
+
+    buffer = string_append(STRING_ARGS(buffer), capacity, value.str, value.length);
+
+    // Repeat append the padding string until we've reached the desired length
+    while (buffer.length < length)
+    {
+        buffer = string_append(STRING_ARGS(buffer), capacity, padding.str, padding.length);
+    }
+
+    expr_result_t padded = expr_result_t(string_to_const(buffer));
+    string_deallocate(buffer.str);
+
+    return padded;
+}
+
+FOUNDATION_STATIC expr_result_t expr_eval_string_ends_with(const expr_func_t* f, vec_expr_t* args, void* c)
+{
+    string_const_t value = expr_eval_get_string_arg(args, 0, "Invalid value");
+    string_const_t suffix = expr_eval_get_string_arg(args, 1, "Invalid suffix");
+
+    return expr_result_t((bool)string_ends_with(value.str, value.length, suffix.str, suffix.length));
+}
+
+FOUNDATION_STATIC expr_result_t expr_eval_string_format(const expr_func_t* f, vec_expr_t* args, void* c)
+{
+    // Examples: FORMAT("Hello {0}", "world", ...) => "Hello world"
+
+    if (args->len > 10)
+        throw ExprError(EXPR_ERROR_INVALID_ARGUMENT, "Too many arguments");
+
+    int num_args = args->len - 1;
+    string_const_t format = expr_eval_get_string_arg(args, 0, "Invalid format string");
+
+    string_t tstr = {};
+    
+    if (num_args == 0) 
+    {
+        tstr = string_clone(STRING_ARGS(format));
+    } 
+    else 
+    {
+        expr_format_supported_value_t* results = nullptr;
+        for (int i = 0; i < num_args; ++i)
+        {
+            expr_result_t e = expr_eval(args->get(i + 1));
+            if (e.type == EXPR_RESULT_NULL)
+            {
+                expr_format_supported_value_t v{StringArgumentType::POINTER};
+                v.ptr = nullptr;
+                array_push(results, v);
+            }
+            else if (e.type == EXPR_RESULT_TRUE)
+                array_push(results, (expr_format_supported_value_t{StringArgumentType::BOOL, true}));
+            else if (e.type == EXPR_RESULT_FALSE)
+                array_push(results, (expr_format_supported_value_t{StringArgumentType::BOOL, false}));
+            else if (e.type == EXPR_RESULT_NUMBER)
+            {
+                expr_format_supported_value_t v{StringArgumentType::DOUBLE};
+                v.n = e.as_number();
+                array_push(results, v);
+            }
+            else
+            {
+                string_const_t s = e.as_string();
+                expr_format_supported_value_t v{StringArgumentType::CSTRING};
+                v.s = string_clone(STRING_ARGS(s)).str;
+                array_push(results, v);
+            }
+        }
+
+        num_args = (int)array_size(results);
+        if (num_args == 1)
+        {
+            tstr = string_format_allocate_template(STRING_ARGS(format), results[0].type, results[0].u);
+        }
+        else if (num_args == 2)
+        {
+            tstr = string_format_allocate_template(STRING_ARGS(format), 
+                results[0].type, results[0].u, results[1].type, results[1].u);
+        }
+        else if (num_args == 3)
+        {
+            tstr = string_format_allocate_template(STRING_ARGS(format), 
+                results[0].type, results[0].u, results[1].type, results[1].u, results[2].type, results[2].u);
+        }
+        else if (num_args == 4)
+        {
+            tstr = string_format_allocate_template(STRING_ARGS(format), 
+                results[0].type, results[0].u, results[1].type, results[1].u, 
+                results[2].type, results[2].u, results[3].type, results[3].u);
+        }
+        else if (num_args == 5)
+        {
+            tstr = string_format_allocate_template(STRING_ARGS(format), 
+                results[0].type, results[0].u, results[1].type, results[1].u, 
+                results[2].type, results[2].u, results[3].type, results[3].u, results[4].type, results[4].u);
+        }
+        else if (num_args == 6)
+        {
+            tstr = string_format_allocate_template(STRING_ARGS(format), 
+                results[0].type, results[0].u, results[1].type, results[1].u, 
+                results[2].type, results[2].u, results[3].type, results[3].u,
+                results[4].type, results[4].u, results[5].type, results[5].u);
+        }
+        else if (num_args == 7)
+        {
+            tstr = string_format_allocate_template(STRING_ARGS(format), 
+                results[0].type, results[0].u, results[1].type, results[1].u, 
+                results[2].type, results[2].u, results[3].type, results[3].u,
+                results[4].type, results[4].u, results[5].type, results[5].u,
+                results[6].type, results[6].u);
+        }
+        else if (num_args == 8)
+        {
+            tstr = string_format_allocate_template(STRING_ARGS(format), 
+                results[0].type, results[0].u, results[1].type, results[1].u, 
+                results[2].type, results[2].u, results[3].type, results[3].u,
+                results[4].type, results[4].u, results[5].type, results[5].u,
+                results[6].type, results[6].u, results[7].type, results[7].u);
+
+        }
+        else if (num_args == 9)
+        {
+            tstr = string_format_allocate_template(STRING_ARGS(format), 
+                results[0].type, results[0].u, results[1].type, results[1].u, 
+                results[2].type, results[2].u, results[3].type, results[3].u,
+                results[4].type, results[4].u, results[5].type, results[5].u,
+                results[6].type, results[6].u, results[7].type, results[7].u, 
+                results[8].type, results[8].u);
+        }
+
+        for (unsigned i = 0, end = array_size(results); i < end; ++i)
+        {
+            if (results[i].type == StringArgumentType::CSTRING)
+                string_deallocate(results[i].s);
+        }
+        array_deallocate(results);
+    }
+    
+    expr_result_t formatted(string_to_const(tstr));
+    string_deallocate(tstr.str);
+    return formatted;
+}
+
+FOUNDATION_STATIC expr_result_t expr_eval_string_starts_with(const expr_func_t* f, vec_expr_t* args, void* c)
+{
+    string_const_t value = expr_eval_get_string_arg(args, 0, "Invalid value");
+    string_const_t prefix = expr_eval_get_string_arg(args, 1, "Invalid prefix");
+
+    return expr_result_t((bool)string_starts_with(value.str, value.length, prefix.str, prefix.length));
+}
+
 FOUNDATION_STATIC expr_result_t expr_eval_while(const expr_func_t* f, vec_expr_t* args, void* c)
 {
     if (args->len != 2)
@@ -986,27 +1276,37 @@ FOUNDATION_STATIC expr_result_t expr_eval_filter(const expr_func_t* f, vec_expr_
     expr_result_t* results = nullptr;
     for (auto e : elements)
     {
+         expr_result_t* var_stack = nullptr;
         if (!e.is_set())
         {
+            array_push(var_stack, expr_get_global_var_value("$1"));
             expr_set_or_create_global_var(STRING_CONST("$1"), e);
         }
         else
         {
-            char varname[4];
             int i = 1;
+            char varname[4];
             for (auto m : e)
             {
                 string_t macro = string_format(STRING_BUFFER(varname), STRING_CONST("$%d"), i);
+                array_push(var_stack, expr_get_global_var_value(STRING_ARGS(macro)));
                 expr_set_or_create_global_var(STRING_ARGS(macro), m);
                 i++;
             }
         }
 
         expr_result_t r = expr_eval(&args->buf[1]);
-        if (r.type == EXPR_RESULT_FALSE)
-            continue;
-        if (r.type == EXPR_RESULT_TRUE || r.as_number() != 0)
+        if (r.type != EXPR_RESULT_FALSE && (r.type == EXPR_RESULT_TRUE || r.as_number() != 0))
             array_push_memcpy(results, &e);
+
+        // Restore global variables
+        for (unsigned i = 0, end = array_size(var_stack); i < end; ++i)
+        {
+            char varname[4];
+            string_t macro = string_format(STRING_BUFFER(varname), STRING_CONST("$%d"), i+1);
+            expr_set_or_create_global_var(STRING_ARGS(macro), var_stack[i]);
+        }
+        array_deallocate(var_stack);
     }
 
     return expr_eval_list(results);
@@ -1027,10 +1327,13 @@ FOUNDATION_STATIC expr_result_t expr_eval_map(const expr_func_t* f, vec_expr_t* 
         throw ExprError(EXPR_ERROR_INVALID_ARGUMENT, "First argument must be a result set");
 
     expr_result_t* results = nullptr;
+
     for (auto e : elements)
     {
+        expr_result_t* var_stack = nullptr;
         if (!e.is_set())
         {
+            array_push(var_stack, expr_get_global_var_value("$1"));
             expr_set_or_create_global_var(STRING_CONST("$1"), e);
         }
         else
@@ -1040,13 +1343,25 @@ FOUNDATION_STATIC expr_result_t expr_eval_map(const expr_func_t* f, vec_expr_t* 
             for (auto m : e)
             {
                 string_t macro = string_format(STRING_BUFFER(varname), STRING_CONST("$%d"), i);
+                array_push(var_stack, expr_get_global_var_value(STRING_ARGS(macro)));
                 expr_set_or_create_global_var(STRING_ARGS(macro), m);
                 i++;
             }
         }
 
         expr_result_t r = expr_eval(&args->buf[1]);
+        if (r.is_set() && r.index == NO_INDEX)
+            r.index = r.element_count() - 1;
         array_push_memcpy(results, &r);
+
+        // Restore global variables
+        for (unsigned i = 0, end = array_size(var_stack); i < end; ++i)
+        {
+            char varname[4];
+            string_t macro = string_format(STRING_BUFFER(varname), STRING_CONST("$%d"), i+1);
+            expr_set_or_create_global_var(STRING_ARGS(macro), var_stack[i]);
+        }
+        array_deallocate(var_stack);
     }
 
     return expr_eval_list(results);
@@ -1054,28 +1369,73 @@ FOUNDATION_STATIC expr_result_t expr_eval_map(const expr_func_t* f, vec_expr_t* 
 
 FOUNDATION_STATIC expr_result_t expr_eval_array_index(const expr_func_t* f, vec_expr_t* args, void* c)
 {
+    // Examples: INDEX([[0, 'test'], [1, 'sweet']], 1, 1) == 'sweet'
+    //           INDEX([['field1', 33], ['field2', 63]], 'field2') == 63
+
     if (args == nullptr || args->len < 1)
         throw ExprError(EXPR_ERROR_INVALID_ARGUMENT, "Invalid arguments");
 
     expr_result_t arr = expr_eval(&args->buf[0]);
     if (!arr.is_set())
-        throw ExprError(EXPR_ERROR_INVALID_ARGUMENT, "Nothing to index (%d)", arr.type);
+        throw ExprError(EXPR_ERROR_EMPTY_SET, "Nothing to index (%d)", arr.type);
 
     for (int i = 1; i < args->len; ++i)
     {
         const expr_result_t& e_index_value = expr_eval(&args->buf[i]);
-        const double index_value = e_index_value.as_number(DNAN);
-        if (math_real_is_nan(index_value))
-            throw ExprError(EXPR_ERROR_INVALID_ARGUMENT, "Invalid index `%.*s` (%d)", STRING_FORMAT(args->buf[i].token), i);
 
-        expr_result_t elm = arr.element_at((unsigned int)index_value);
-        if (!elm.is_set() || (i + 1) >= args->len)
-            return elm;
+        if (e_index_value.type == EXPR_RESULT_NUMBER)
+        {
+            const double index_value = e_index_value.as_number(DNAN);
+            if (math_real_is_nan(index_value))
+                throw ExprError(EXPR_ERROR_INVALID_ARGUMENT, "Invalid index `%.*s` (%d)", STRING_FORMAT(args->buf[i].token), i);
 
-        arr = elm;
+            expr_result_t elm;
+            if (index_value >= 0)
+                elm = arr.element_at((unsigned int)index_value);
+            else
+                elm = arr.element_at((unsigned int)(arr.element_count() + index_value));
+
+            if (!elm.is_set() || (i + 1) >= args->len)
+                return elm;
+
+            arr = elm;
+        }
+        else
+        {
+            string_const_t name = e_index_value.as_string();
+            if (name.length == 0)
+                throw ExprError(EXPR_ERROR_INVALID_ARGUMENT, "Invalid index name `%.*s` (%d)", STRING_FORMAT(args->buf[i].token), i);
+
+            // Find element with [name, value, ...]
+            bool found = false;
+            for (auto e : arr)
+            {
+                expr_result_t e_name = e.element_at(0);
+                string_const_t s_name = e_name.as_string();
+                if (string_equal(s_name.str, s_name.length, name.str, name.length))
+                {
+                    if ((i + 1) >= args->len)
+                    {
+                        if (e.element_count() == 2)
+                            return e.element_at(1);
+                        return e;
+                    }
+
+                    arr = e;
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found)
+            {
+                if ((i + 1) >= args->len)
+                    return NIL;
+                throw ExprError(EXPR_ERROR_INVALID_ARGUMENT, "Index `%.*s` not found (%d)", STRING_FORMAT(args->buf[i].token), i);
+            }
+        }
     }
 
-    FOUNDATION_ASSERT_FAIL("Unsupported");
     return arr;
 }
 
@@ -1344,10 +1704,22 @@ expr_result_t expr_eval(expr_t* e)
 
     case OP_FUNC:
     {
-        expr_result_t fn_result = e->param.func.f->handler(e->param.func.f, &e->args, e->param.func.context);
-        expr_var_t* v = expr_get_or_create_global_var(STRING_CONST("$0"));
-        v->value = fn_result;
-        return fn_result;
+        try
+        {
+            expr_result_t fn_result = e->param.func.f->handler(e->param.func.f, &e->args, e->param.func.context);
+            expr_var_t* v = expr_get_or_create_global_var(STRING_CONST("$0"));
+            v->value = fn_result;
+            return fn_result;
+        }
+        catch (ExprError err)
+        {
+            if (err.outer == EXPR_ERROR_EVAL_FUNCTION)
+                throw err;
+
+            throw ExprError(err.code, EXPR_ERROR_EVAL_FUNCTION, "Failed to evaluate function %.*s: %.*s", 
+                STRING_FORMAT(e->token), (int)err.message_length, err.message);
+        }
+        
     }
 
     case OP_SET:
@@ -1554,6 +1926,7 @@ FOUNDATION_STATIC inline void expr_copy(expr_t* dst, expr_t* src)
     if (src->type == OP_FUNC) {
         dst->param.func.f = src->param.func.f;
         dst->param.func.context = nullptr;
+        dst->token = src->token;
         vec_foreach(&src->args, arg, i) {
             expr_t tmp = expr_init(OP_UNKNOWN);
             expr_copy(&tmp, &arg);
@@ -1777,6 +2150,7 @@ expr_t* expr_create(const char* s, size_t len, expr_var_list_t* vars, expr_func_
                             char varname[4];
                             string_format(STRING_BUFFER(varname), STRING_CONST("$%d"), (j + 1));
                             expr_var_t* vv = expr_var(vars, varname, string_length(varname));
+                            vv->value = NIL;
                             expr_t ev = expr_varref(vv);
                             expr_t assign = expr_binary(OP_ASSIGN, ev, vec_nth(&arg.args, j));
                             *p = expr_binary(OP_COMMA, assign, expr_const(EXPR_ZERO));
@@ -1977,6 +2351,20 @@ expr_result_t eval(string_const_t expression)
         array_deallocate(_expr_lists[i]);
     array_clear(_expr_lists);
 
+    // Check if the expression is @FILE_PATH
+    if (expression.length > 0 && expression.str[0] == '@')
+    {
+        string_const_t path = {expression.str+1, expression.length-1};
+        if (fs_is_file(STRING_ARGS(path)))
+        {
+            string_t file_expr_text = fs_read_text(STRING_ARGS(path));
+            log_infof(HASH_EXPR, STRING_CONST("Evaluating expression from file: %.*s"), STRING_FORMAT(path));
+            expr_result_t result = eval(STRING_ARGS(file_expr_text));
+            string_deallocate(file_expr_text.str);
+            return result;
+        }
+    }
+
     expr_t* e = expr_create(STRING_ARGS(expression), &_global_vars, _expr_user_funcs);
     if (e == NULL)
     {
@@ -2051,6 +2439,19 @@ expr_var_t* expr_find_global_var(const char* name, size_t name_length)
     return nullptr;
 }
 
+FOUNDATION_STATIC expr_var_t* expr_get_global_var(const char* name, size_t name_length /*= 0ULL*/)
+{
+    name_length = name_length == 0ULL ? string_length(name) : name_length;
+    expr_var_t* v = expr_find_global_var(name, name_length);
+    return v;
+}
+
+expr_result_t expr_get_global_var_value(const char* name, size_t name_length /*= 0ULL*/)
+{
+    expr_var_t* v = expr_get_global_var(name, name_length);
+    return v ? v->value : NIL;
+}
+
 expr_var_t* expr_get_or_create_global_var(const char* name, size_t name_length /*= 0ULL*/)
 {
     name_length = name_length == 0ULL ? string_length(name) : name_length;
@@ -2059,6 +2460,7 @@ expr_var_t* expr_get_or_create_global_var(const char* name, size_t name_length /
     {
         v = (expr_var_t*)memory_allocate(HASH_EXPR, sizeof(expr_var_t) + name_length + 1, 0, MEMORY_PERSISTENT);
         v->name = string_copy((char*)v + sizeof(expr_var_t), name_length + 1, name, name_length);
+        v->value = NIL;
         v->next = _global_vars.head;
         _global_vars.head = v;
     }
@@ -2134,7 +2536,9 @@ void expr_log_evaluation_result(string_const_t expression_string, const expr_res
         {
             if (expression_string.length + result_string.length > 64)
             {
-                log_infof(HASH_EXPR, STRING_CONST("%.*s =>\n\t%.*s"), STRING_FORMAT(expression_string), STRING_FORMAT(result_string));
+                log_infof(HASH_EXPR, STRING_CONST("%.*s =>"), STRING_FORMAT(expression_string));
+                LOG_PREFIX(false);
+                log_infof(HASH_EXPR, STRING_CONST("\t%.*s"), STRING_FORMAT(result_string));
             }
             else
             {
@@ -2146,6 +2550,61 @@ void expr_log_evaluation_result(string_const_t expression_string, const expr_res
         else
             log_infof(HASH_EXPR, STRING_CONST("\t%.*s"), STRING_FORMAT(result_string));
     }
+}
+
+ExprError::ExprError(expr_error_code_t code, expr_error_code_t outer, const char* msg, ...)
+{
+    this->code = code;
+    this->outer = outer;
+
+    if (msg)
+    {
+        va_list list;
+        va_start(list, msg);
+        message_length = string_vformat(STRING_BUFFER(message), msg, string_length(msg), list).length;
+        va_end(list);
+    }
+    else
+    {
+        const char* expr_error_msg = expr_error_cstr(code);
+        size_t expr_error_msg_length = string_length(expr_error_msg);
+        message_length = string_copy(STRING_BUFFER(message), expr_error_msg, expr_error_msg_length).length;
+    }
+}
+
+ExprError::ExprError(expr_error_code_t code, const char* msg /*= nullptr*/, ...)
+{
+    this->code = code;
+    this->outer = EXPR_ERROR_NONE;
+
+    if (msg)
+    {
+        va_list list;
+        va_start(list, msg);
+        message_length = string_vformat(STRING_BUFFER(message), msg, string_length(msg), list).length;
+        va_end(list);
+    }
+    else
+    {
+        const char* expr_error_msg = expr_error_cstr(code);
+        size_t expr_error_msg_length = string_length(expr_error_msg);
+        message_length = string_copy(STRING_BUFFER(message), expr_error_msg, expr_error_msg_length).length;
+    }
+}
+
+ExprError::ExprError(expr_error_code_t code, const expr_func_t* f, vec_expr_t* args, unsigned arg_index, const char* msg, ...)
+{
+    this->code = code;
+
+    va_list list;
+    va_start(list, msg);
+
+    char err_msg_buffer[sizeof(message)];
+    string_t err_msg = string_vformat(STRING_BUFFER(err_msg_buffer), msg, string_length(msg), list);
+    va_end(list);
+
+    message_length = string_format(STRING_BUFFER(message), STRING_CONST("%.*s error with %.*s: %.*s"),
+        STRING_FORMAT(f->name), STRING_FORMAT(args->buf[arg_index].token), STRING_FORMAT(err_msg)).length;
 }
 
 FOUNDATION_STATIC void expr_initialize()
@@ -2160,28 +2619,38 @@ FOUNDATION_STATIC void expr_initialize()
     array_push(_expr_user_funcs, (expr_func_t{ STRING_CONST("MAP"), expr_eval_map, NULL, 0 })); // MAP([[a, 1], [b, 2], [c, 3]], INDEX($1, 1)) == [1, 2, 3]
     array_push(_expr_user_funcs, (expr_func_t{ STRING_CONST("FILTER"), expr_eval_filter, NULL, 0 })); // FILTER([1, 2, 3], EVAL($1 >= 3)) == [3]
     array_push(_expr_user_funcs, (expr_func_t{ STRING_CONST("EVAL"), expr_eval_inline, NULL, 0 })); // ADD(5, 5), EVAL($0 >= 10)
-    array_push(_expr_user_funcs, (expr_func_t{ STRING_CONST("REPEAT"), expr_eval_repeat, NULL, 0 }));
-    array_push(_expr_user_funcs, (expr_func_t{ STRING_CONST("REDUCE"), expr_eval_reduce, NULL, 0 }));
-    array_push(_expr_user_funcs, (expr_func_t{ STRING_CONST("SORT"), expr_eval_sort, NULL, 0 }));
+    array_push(_expr_user_funcs, (expr_func_t{ STRING_CONST("REPEAT"), expr_eval_repeat, NULL, 0 })); // REPEAT(RANDOM($i, $count), 5)
+    array_push(_expr_user_funcs, (expr_func_t{ STRING_CONST("REDUCE"), expr_eval_reduce, NULL, 0 })); // REDUCE([1, 2, 3], ADD(), 5) == 11
+    array_push(_expr_user_funcs, (expr_func_t{ STRING_CONST("SORT"), expr_eval_sort, NULL, 0 })); // SORT(R('300K', ps), DESC, 1)
 
     // Math functions
-    array_push(_expr_user_funcs, (expr_func_t{ STRING_CONST("ROUND"), expr_eval_round, NULL, 0 }));
-    array_push(_expr_user_funcs, (expr_func_t{ STRING_CONST("CEIL"), expr_eval_ceil, NULL, 0 }));
-    array_push(_expr_user_funcs, (expr_func_t{ STRING_CONST("FLOOR"), expr_eval_floor, NULL, 0 }));
-    array_push(_expr_user_funcs, (expr_func_t{ STRING_CONST("RANDOM"), expr_eval_random, NULL, 0 }));
-    array_push(_expr_user_funcs, (expr_func_t{ STRING_CONST("RAND"), expr_eval_random, NULL, 0 }));
+    array_push(_expr_user_funcs, (expr_func_t{ STRING_CONST("ROUND"), expr_eval_round, NULL, 0 })); // ROUND(1.5) == 2
+    array_push(_expr_user_funcs, (expr_func_t{ STRING_CONST("CEIL"), expr_eval_ceil, NULL, 0 })); // CEIL(1.5) == 2
+    array_push(_expr_user_funcs, (expr_func_t{ STRING_CONST("FLOOR"), expr_eval_floor, NULL, 0 })); // FLOOR(1.5) == 1
+    array_push(_expr_user_funcs, (expr_func_t{ STRING_CONST("RANDOM"), expr_eval_random, NULL, 0 })); // RANDOM(0, 10) == 5
+    array_push(_expr_user_funcs, (expr_func_t{ STRING_CONST("RAND"), expr_eval_random, NULL, 0 })); // RAND(1, 99) == 50
 
     // Flow functions
-    array_push(_expr_user_funcs, (expr_func_t{ STRING_CONST("IF"), expr_eval_if, NULL, 0 }));
-    array_push(_expr_user_funcs, (expr_func_t{ STRING_CONST("WHILE"), expr_eval_while, NULL, 0 }));
+    array_push(_expr_user_funcs, (expr_func_t{ STRING_CONST("IF"), expr_eval_if, NULL, 0 })); // IF(1, 2, 3) == 2
+    array_push(_expr_user_funcs, (expr_func_t{ STRING_CONST("WHILE"), expr_eval_while, NULL, 0 })); // WHILE(EVAL($0 < 10), ADD($0, 1), 0) == 10
 
     // Vectors and matrices functions
     expr_register_vec_mat_functions(_expr_user_funcs);
 
+    // String functions
+    array_push(_expr_user_funcs, (expr_func_t{ STRING_CONST("LPAD"), expr_eval_string_lpad, NULL, 0 })); // LPAD($month, '0', 2) == '01'
+    array_push(_expr_user_funcs, (expr_func_t{ STRING_CONST("RPAD"), expr_eval_string_rpad, NULL, 0 })); // RPAD(19999, '0', 10) == '1999900000'
+    array_push(_expr_user_funcs, (expr_func_t{ STRING_CONST("ENDS_WITH"), expr_eval_string_ends_with, NULL, 0 })); // ENDS_WITH('abc', 'c') == true
+    array_push(_expr_user_funcs, (expr_func_t{ STRING_CONST("STARTS_WITH"), expr_eval_string_starts_with, NULL, 0 })); // STARTS_WITH('abc', 'a') == true
+    array_push(_expr_user_funcs, (expr_func_t{ STRING_CONST("FORMAT"), expr_eval_string_format, NULL, 0 })); // FORMAT('{0, date}: {1, currency}', NOW(), 1000) == '2019-01-01: 1 000.00 $'
+
     // Time functions
     array_push(_expr_user_funcs, (expr_func_t{ STRING_CONST("NOW"), expr_eval_time_now, NULL, 0 })); // // ELAPSED_DAYS(TO_DATE(F(SSE.V, General.UpdatedAt)), NOW())
-    array_push(_expr_user_funcs, (expr_func_t{ STRING_CONST("DATE"), expr_eval_create_date, NULL, 0 }));
-    array_push(_expr_user_funcs, (expr_func_t{ STRING_CONST("DATESTR"), expr_eval_date_to_string, NULL, 0 }));
+    array_push(_expr_user_funcs, (expr_func_t{ STRING_CONST("DATE"), expr_eval_create_date, NULL, 0 })); // DATE(2019, 1, 1)
+    array_push(_expr_user_funcs, (expr_func_t{ STRING_CONST("DATESTR"), expr_eval_date_to_string, NULL, 0 })); // DATESTR(DATE(2019, 1, 1)) == '2019-01-01'
+    array_push(_expr_user_funcs, (expr_func_t{ STRING_CONST("YEAR"), expr_eval_year_from_date, NULL, 0 })); // YEAR(DATE(2019, 1, 28)) == 2019
+    array_push(_expr_user_funcs, (expr_func_t{ STRING_CONST("MONTH"), expr_eval_month_from_date, NULL, 0 })); // MONTH(DATE(2019, 1, 28)) == 1
+    array_push(_expr_user_funcs, (expr_func_t{ STRING_CONST("DAY"), expr_eval_day_from_date, NULL, 0 })); // DAY(DATE(2019, 1, 28)) == 28
     
     // Must always be last
     array_push(_expr_user_funcs, (expr_func_t{ NULL, 0, NULL, NULL, 0 }));
@@ -2196,9 +2665,14 @@ FOUNDATION_STATIC void expr_initialize()
     expr_set_global_var("LOGN10", DBL_LOGN10);
     expr_set_global_var("EPSILON", DBL_EPSILON);
     expr_set_global_var("nan", DNAN);
-    expr_set_global_var("NIL", expr_result_t(nullptr));
+    expr_set_global_var("nil", expr_result_t(nullptr));
+    //expr_set_global_var("NIL", expr_result_t(nullptr));
+    expr_set_global_var("null", expr_result_t(nullptr));
     expr_set_global_var("true", expr_result_t(true));
     expr_set_global_var("false", expr_result_t(false));
+
+    plot_expr_initialize();
+    table_expr_initialize();
 
     string_const_t eval_expression;
     // TODO: Add a way for module to register startup command line arguments
@@ -2244,6 +2718,9 @@ FOUNDATION_STATIC void expr_initialize()
 
 FOUNDATION_STATIC void expr_shutdown()
 {
+    plot_expr_shutdown();
+    table_expr_shutdown();
+
     for (size_t i = 0; i < array_size(_expr_lists); ++i)
         array_deallocate(_expr_lists[i]);
     array_deallocate(_expr_lists);
