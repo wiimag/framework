@@ -1,6 +1,6 @@
 /*
  * Copyright 2022-2023 - All rights reserved.
- * License: https://equals-forty-two.com/LICENSE
+ * License: https://wiimag.com/LICENSE
  * 
  * This module contains application framework specific code. 
  * It is expected that the project sources also includes an app.cpp and defines the following functions:
@@ -276,6 +276,24 @@ FOUNDATION_STATIC ImGuiKeyChord app_string_to_shortcut_key_coord(const char* str
     }
 
     return key;
+}
+
+void app_close_dialogs(window_handle_t owner)
+{
+    for (unsigned i = 0, end = array_size(_dialogs); i < end; ++i)
+    {
+        app_dialog_t* dlg = _dialogs[i];
+
+        if (dlg->window != owner)
+            continue;
+
+        if (dlg->close_handler)
+            dlg->close_handler(dlg->user_data);
+        MEM_DELETE(dlg);
+        array_erase_ordered_safe(_dialogs, i);
+        --i;
+        --end;
+    }
 }
 
 void app_dialogs_render()

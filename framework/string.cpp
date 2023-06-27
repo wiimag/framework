@@ -1,6 +1,6 @@
 /*
- * Copyright 2023 equals-forty-two.com All rights reserved.
- * License: https://equals-forty-two.com/LICENSE
+ * License: https://wiimag.com/LICENSE
+ * Copyright 2023 Wiimag inc. All rights reserved.
  */
 
 #include "string.h"
@@ -2252,10 +2252,10 @@ string_t string_remove_line_returns(const char* str, size_t length)
     return result;
 }
 
-string_const_t random_string(char* buf, size_t capacity)
+string_t string_random(char* buf, size_t capacity)
 {
     static const char* const strings[] = {
-        "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s",
+        " ", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s",
         "t", "u", "v", "w", "x", "y", "z", "0", "1", "2", "3", "4", "5", "6",
         "7", "8", "9", "!", "@", "#", "$", "%", "^", "&", "*", "(", ")",
         "-", "_", "+", "=", "[", "]", "{", "}", ";", ":", "'", "\"", ",", ".",
@@ -2269,7 +2269,7 @@ string_const_t random_string(char* buf, size_t capacity)
         random_string = string_concat(buf, capacity,  STRING_ARGS(random_string), strings[string_index], string_length(strings[string_index]));
     }
     buf[num_chars] = '\0';
-    return { buf, num_chars };
+    return random_string;
 }
 
 void string_deallocate(string_t& str)
@@ -2925,6 +2925,35 @@ version_t string_to_version_short(const char* str, size_t length)
     }
 
     return v;
+}
+
+int string_compare_skip_code_points(STRING_PARAM(lhs), STRING_PARAM(rhs))
+{
+    // Skip UTF-8 icon code points
+    while (lhs && *lhs && lhs_length > 0)
+    {
+        if (*lhs > 0)
+            break;
+        // Get utf-8 character length
+        const int clength = string_glyph_length(lhs, lhs_length);
+        lhs += clength;
+        lhs_length -= clength;
+    }
+
+    while (rhs && *rhs && rhs_length > 0)
+    {
+        if (*rhs > 0)
+            break;
+        // Get utf-8 character length
+        const int clength = string_glyph_length(rhs, rhs_length);
+        rhs += clength;
+        rhs_length -= clength;
+    }
+
+    //string_const_t l = string_trim({ lhs, lhs_length });
+    //string_const_t r = string_trim({ rhs, rhs_length });
+
+    return string_compare(STRING_PARAM_ARGS(lhs), STRING_PARAM_ARGS(rhs));
 }
 
 string_t string_utf8_from_code_point(char* buffer, size_t capacity, const char* str, size_t length)

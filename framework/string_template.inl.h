@@ -1,6 +1,6 @@
 /*
- * Copyright 2023 equals-forty-two.com All rights reserved.
- * License: https://equals-forty-two.com/LICENSE
+ * License: https://wiimag.com/LICENSE
+ * Copyright 2023 Wiimag inc. All rights reserved.
  *
  * Declare the string template variadics
  */

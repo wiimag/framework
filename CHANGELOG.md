@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.2.1] - 2023-06-27
+- Add `app_close_dialogs` to explicitly close all dialogs.
+- Add `array_remove_ptr` to remove the element in array from its pointer reference.
+- Add `table_default_sorter` to provide a default sorter for a table.
+- Add a http query default connection timeout of 10 seconds.
+- Fix some OSX compilation issues.
+- Rename `build.settings` to `build.config`
+- Update license <https://wiimag.com/LICENSE>
+
 ## [1.2.0] - 2023-06-07
 - Add `*.expr` source files to generated solution.
 - Add `config.h/cpp` tests

@@ -1,6 +1,6 @@
 /*
- * Copyright 2022-2023 - All rights reserved.
- * License: https://equals-forty-two.com/LICENSE
+ * License: https://wiimag.com/LICENSE
+ * Copyright 2022-2023 Wiimag Inc. All rights reserved.
  */
 
 
@@ -56,6 +56,7 @@ FOUNDATION_STATIC void app_main_menu_begin(GLFWwindow* window)
  */
 FOUNDATION_STATIC void app_main_menu_end(GLFWwindow* window)
 {
+    #if BUILD_APPLICATION
     // Let registered module inject some menus.
     module_foreach_menu();
 
@@ -75,8 +76,47 @@ FOUNDATION_STATIC void app_main_menu_end(GLFWwindow* window)
     }
 
     app_menu_end(window);
+    #endif // BUILD_APPLICATION
 }
 
+FOUNDATION_STATIC void app_tabs_content_filter()
+{
+    if (shortcut_executed(true, ImGuiKey_F))
+        ImGui::SetKeyboardFocusHere();
+    ImGui::InputTextEx("##SearchFilter", tr("Filter... " ICON_MD_FILTER_LIST_ALT), STRING_BUFFER(SETTINGS.search_filter),
+        ImVec2(IM_SCALEF(150.0f), 0), ImGuiInputTextFlags_AutoSelectAll, 0, 0);
+}
+
+FOUNDATION_STATIC void app_tabs()
+{   
+    #if BUILD_APPLICATION
+    static ImGuiTabBarFlags tabs_init_flags = ImGuiTabBarFlags_Reorderable;
+    if (tabs_begin("Tabs", SETTINGS.current_tab, tabs_init_flags, nullptr))
+    {
+        // Render the settings tab
+        tab_set_color(TAB_COLOR_APP_3D);
+        tab_draw(tr(ICON_MD_HEXAGON " Example "), nullptr, 0, []()
+        {
+            ImGui::TrTextUnformatted("Hello World!");
+        });
+
+        // Render module registered tabs
+        module_foreach_tabs();
+
+        // Render the settings tab
+        tab_set_color(TAB_COLOR_SETTINGS);
+        tab_draw(tr(ICON_MD_SETTINGS " Settings ##Settings"), nullptr,
+            ImGuiTabItemFlags_NoPushId | ImGuiTabItemFlags_Trailing | ImGuiTabItemFlags_NoReorder, settings_draw);
+
+        // We differ setting ImGuiTabBarFlags_AutoSelectNewTabs until after the first frame,
+        // since we manually select the first tab in the list using the user session data.
+        if ((tabs_init_flags & ImGuiTabBarFlags_AutoSelectNewTabs) == 0)
+            tabs_init_flags |= ImGuiTabBarFlags_AutoSelectNewTabs;
+
+        tabs_end();
+    }
+    #endif
+}
 /*! Main entry point used to report the application title.
  *
  *  @return The application title.
@@ -147,6 +187,10 @@ extern int app_initialize(GLFWwindow* window)
     // App systems
     settings_initialize();
     module_initialize();
+    
+    #if FOUNDATION_PLATFORM_MACOS
+    about_initialize();
+    #endif
 
     return 0;
 }
@@ -204,6 +248,7 @@ extern void app_update(GLFWwindow* window)
  */
 extern void app_render(GLFWwindow* window, int frame_width, int frame_height)
 {
+    #if BUILD_APPLICATION
     ImGui::SetNextWindowPos(ImVec2(0, 0));
     ImGui::SetNextWindowSize(ImVec2((float)frame_width, (float)frame_height));
 
@@ -219,31 +264,7 @@ extern void app_render(GLFWwindow* window, int frame_width, int frame_height)
         app_main_menu_begin(window);
 
         // Render document tabs
-        static ImGuiTabBarFlags tabs_init_flags = ImGuiTabBarFlags_Reorderable;
-        if (tabs_begin("Tabs", SETTINGS.current_tab, tabs_init_flags, nullptr))
-        {
-            // Render the settings tab
-            tab_set_color(TAB_COLOR_APP_3D);
-            tab_draw(tr(ICON_MD_HEXAGON " Example "), nullptr, 0, []()
-            {
-                ImGui::TrTextUnformatted("Hello World!");
-            });
-
-            // Render module registered tabs
-            module_foreach_tabs();
-
-            // Render the settings tab
-            tab_set_color(TAB_COLOR_SETTINGS);
-            tab_draw(tr(ICON_MD_SETTINGS " Settings ##Settings"), nullptr,
-                ImGuiTabItemFlags_NoPushId | ImGuiTabItemFlags_Trailing | ImGuiTabItemFlags_NoReorder, settings_draw);
-
-            // We differ setting ImGuiTabBarFlags_AutoSelectNewTabs until after the first frame,
-            // since we manually select the first tab in the list using the user session data.
-            if ((tabs_init_flags & ImGuiTabBarFlags_AutoSelectNewTabs) == 0)
-                tabs_init_flags |= ImGuiTabBarFlags_AutoSelectNewTabs;
-
-            tabs_end();
-        }
+        app_tabs();
 
         // Render trailing menus
         app_main_menu_end(window);
@@ -252,6 +273,8 @@ extern void app_render(GLFWwindow* window, int frame_width, int frame_height)
         module_foreach_window();
 
     } ImGui::End();
+
+    #endif
 }
 
 /*! Main entry point to additional 3rdparty library information 

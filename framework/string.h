@@ -1,6 +1,6 @@
 /*
- * Copyright 2023 equals-forty-two.com All rights reserved.
- * License: https://equals-forty-two.com/LICENSE
+ * License: https://wiimag.com/LICENSE
+ * Copyright 2023 Wiimag inc. All rights reserved.
  */
 
 #pragma once
@@ -51,7 +51,7 @@ struct SharedBuffer
 };
 
 template<size_t BUF_SIZE> thread_local size_t SharedBuffer<BUF_SIZE>::index = 0;
-template<size_t BUF_SIZE> thread_local char SharedBuffer<BUF_SIZE>::buffer[RING_COUNT][BUF_SIZE] = { "", "", "", "", "", "" };
+template<size_t BUF_SIZE> thread_local char SharedBuffer<BUF_SIZE>::buffer[RING_COUNT][BUF_SIZE] = {};
 
 /*! @def SHARED_BUFFER
  * @brief A macro to declare a thread local shared buffer.
@@ -633,7 +633,7 @@ string_const_t string_join(const T* list, const Iter& iter,
  * @param capacity The capacity of the buffer.
  * @return The random string.
  */
-string_const_t random_string(char* buf, size_t capacity);
+string_t string_random(char* buf, size_t capacity);
 
 /*! Compute levenstein distance between two strings.
  *
@@ -699,3 +699,11 @@ string_t string_utf8_from_code_point(char* buffer, size_t capacity, uint32_t cod
  * @return The UTF-8 string.
  */
 string_t string_utf8_from_code_point(char* buffer, size_t capacity, const char* code_point, size_t length);
+
+/*! Compare two strings, but skip any leading code points that are not letters or digits.
+ *
+ * @param lhs The left hand side string.
+ * @param rhs The right hand side string.
+ * @return The comparison result.
+ */
+int string_compare_skip_code_points(STRING_PARAM(lhs), STRING_PARAM(rhs));

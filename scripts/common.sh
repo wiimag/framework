@@ -2,7 +2,7 @@
 
 #
 # Copyright 2022-2023 - All rights reserved.
-# License: https://equals-forty-two.com/LICENSE
+# License: https://wiimag.com/LICENSE
 #
 # Define a set of bash functions that are shared between the various scripts
 #
@@ -12,6 +12,9 @@ if [ -z "$CONFIG_DIR" ]; then
   echo "The CONFIG_DIR variable is not set"
   exit 1
 fi
+
+# Define build configs file path
+BUILD_CONFIG_PATH="$CONFIG_DIR/build.config"
 
 # Determine running platform
 PLATFORM_NAME="$(uname -s)"
@@ -85,7 +88,7 @@ function convert_path_to_file_link() {
 #
 # @def build_setting <name>
 #
-# Function to read a named value from config/build.settings.
+# Function to read a named value from config/build.config.
 # Each line is expected to be in the format: NAME=VALUE
 # Example:
 #   SHORT_NAME=$(build_setting "PROJECT_ID")
@@ -95,8 +98,8 @@ function build_setting() {
     local name=$1
     
     # Check if the file exists
-    if [ ! -f "$CONFIG_DIR/build.settings" ]; then
-        echo "The file $CONFIG_DIR/build.settings does not exist"
+    if [ ! -f "$BUILD_CONFIG_PATH" ]; then
+        echo "The file $BUILD_CONFIG_PATH does not exist"
         exit 1
     fi
 
@@ -115,10 +118,10 @@ function build_setting() {
             echo $result
             return
         fi
-    done < "$CONFIG_DIR/build.settings"
+    done < "$BUILD_CONFIG_PATH"
 
     # If we get here, the name was not found
-    echo "The name $name was not found in $CONFIG_DIR/build.settings"
+    echo "The name $name was not found in $BUILD_CONFIG_PATH"
     exit 1
 }
 
