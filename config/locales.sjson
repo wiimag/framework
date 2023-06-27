@@ -6,15 +6,54 @@
 			fr = "Fran\xc3\xa7ais"
 		}
 		{
+			hash = "9caea749abdb1b14"
+			en = "Size column to fit###SizeOne"
+			fr = "Ajuster la taille de la colonne###SizeOne"
+		}
+		{
+			hash = "12537b6e7a3e4ab0"
+			en = "Size all columns to fit###SizeAll"
+			fr = "Ajuster la taille de toutes les colonnes###SizeAll"
+		}
+		{
+			hash = "4fe422eca05ca714"
+			en = "Size all columns to default###SizeAll"
+			fr = "Ajuster la taille de toutes les colonnes par d\xc3\xa9faut###SizeAll"
+		}
+		{
+			hash = "cf89c7ccdba1bbe2"
+			en = "Reset order###ResetOrder"
+			fr = "R\xc3\xa9initialiser l'ordre###ResetOrder"
+		}
+		{
+			hash = "c886ae0db5ddb018"
+			en = "(Main menu bar)"
+			fr = "(Barre de menu principale)"
+		}
+		{
+			hash = "3651d020865e6acd"
+			en = "(Popup)"
+			fr = "(Popup)"
+		}
+		{
+			hash = "a080d5f98fcb59f6"
+			en = "(Untitled)"
+			fr = "(Sans titre)"
+		}
+		{
 			hash = "315259d58df4971e"
 			en = "File"
 			fr = "Fichier"
-			it = "File"
 		}
 		{
 			hash = "8d9ff505bf4a8d97"
 			en = "\xee\xa2\xb8 Settings ##Settings"
 			fr = "\xee\xa2\xb8 Param\xc3\xa8tres ##Settings"
+		}
+		{
+			hash = "c60ebcf661bb73d9"
+			en = "Filter... \xee\xa5\x8e"
+			fr = "Filtrer... \xee\xa5\x8e"
 		}
 		{
 			hash = "e85cb85742aca2c7"
@@ -24,7 +63,7 @@
 		{
 			hash = "c29864d9b8d44011"
 			en = "Font scaling"
-			fr = "Taille de la police"
+			fr = "Mise \xc3\xa0 l'\xc3\xa9chelle de la police"
 		}
 		{
 			hash = "86f60888f62f3e63"
@@ -79,22 +118,22 @@
 		{
 			hash = "4ce3491c214c6d9c"
 			en = "About"
-			fr = "A propos"
+			fr = "\xc3\x80 propos"
 		}
 		{
 			hash = "24ad4dccb5387e92"
 			en = "Show Debug Logs"
-			fr = "Afficher les logs de d\xc3\xa9bug"
+			fr = "Afficher les journaux de d\xc3\xa9bogage"
 		}
 		{
 			hash = "4bb994bfcdedfc77"
 			en = "Show Memory Stats"
-			fr = "Afficher les statistiques de m\xc3\xa9moire"
+			fr = "Afficher les statistiques de la m\xc3\xa9moire"
 		}
 		{
 			hash = "c22bb6c30fc026c8"
 			en = "Show Memory Usages"
-			fr = "Afficher l'utilisation de la m\xc3\xa9moire"
+			fr = "Afficher les utilisations de la m\xc3\xa9moire"
 		}
 		{
 			hash = "a995e716ca445020"
@@ -109,7 +148,7 @@
 		{
 			hash = "db7f29cfe3fa3b66"
 			en = "About - %s##8"
-			fr = "À propos - %s##8"
+			fr = "\xc3\x80 propos - %s##8"
 		}
 		{
 			hash = "384737c232119ae6"
@@ -122,14 +161,9 @@
 			fr = "Version %s %.*s (%s)"
 		}
 		{
-			hash = "4de6c636a936ac13"
-			en = "Copyright (C) 2022-2023 - equals-forty-two.com - All rights reserved"
-			fr = "Copyright (C) 2022-2023 - equals-forty-two.com - Tous droits réservés"
-		}
-		{
 			hash = "939f9f77732b5991"
 			en = "This software is provided 'as-is', without any express or implied warranty. In no event will the authors be held liable for any damages arising from the use of this software."
-			fr = "Ce logiciel est fourni 'tel quel', sans aucune garantie expresse ou implicite. En aucun cas les auteurs ne pourront être tenus responsables de tout dommage découlant de l'utilisation de ce logiciel."
+			fr = "Ce logiciel est fourni 'tel quel', sans aucune garantie expresse ou implicite. En aucun cas les auteurs ne pourront \xc3\xaatre tenus responsables de tout dommage d\xc3\xa9coulant de l'utilisation de ce logiciel."
 		}
 		{
 			hash = "720a1625a590e4cd"
@@ -149,7 +183,27 @@
 		{
 			hash = "bb8a54cdfd4df0ff"
 			en = "This software uses the following third-party libraries:"
-			fr = "Ce logiciel utilise les bibliothèques tierces suivantes :"
+			fr = "Ce logiciel utilise les biblioth\xc3\xa8ques tierces suivantes :"
+		}
+		{
+			hash = "c591fe959ca76ec4"
+			en = "Copyright (C) 2022-2023 - https://wiimag.com - All rights reserved"
+			fr = "Droits d'auteur (C) 2022-2023 - https://wiimag.com - Tous droits r\xc3\xa9serv\xc3\xa9s"
+		}
+		{
+			hash = "80c7ceaf84edbb5a"
+			en = "Search logs..."
+			fr = "Rechercher dans les journaux..."
+		}
+		{
+			hash = "40f1ff2a36908e81"
+			en = "Clear"
+			fr = "Effacer"
+		}
+		{
+			hash = "32a0a4b9fed7551a"
+			en = "Eval"
+			fr = "Eval"
 		}
 	]
 }

@@ -167,6 +167,14 @@ cmake --build ./projects/.build --config Release --target wallet -j 10
 ./run generate open workspace
 ```
 
+### Build Distribution Package
+
+You can build an installation package on Windows using the `./scripts/build-package.sh` scripts or simply by running the following command:
+
+```bash
+./run package
+```
+
 ### Batch it all!
 
 ```bash

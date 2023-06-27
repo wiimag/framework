@@ -1,6 +1,6 @@
 /*
- * Copyright 2022-2023 equals-forty-two.com All rights reserved.
- * License: https://equals-forty-two.com/LICENSE
+ * License: https://wiimag.com/LICENSE
+ * Copyright 2022-2023 Wiimag inc. All rights reserved.
  */
 
 #include "common.h"
@@ -98,7 +98,7 @@ string_const_t url_encode(const char* str, size_t str_length)
     char* pbuf = buf.str;
     while (*pstr) {
         char c = *pstr;
-        if (c > 0 && isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~')
+        if (c > 0 && (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~'))
             *pbuf++ = c;
         else if (c == ' ')
             *pbuf++ = '%', *pbuf++ = '2', * pbuf++ = '0';

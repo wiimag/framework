@@ -1,7 +1,7 @@
 #!/bin/bash
 # 
 # Copyright 2023 Wiimag Inc. All rights reserved.
-# License: https://equals-forty-two.com/LICENSE
+# License: https://wiimag.com/LICENSE
 #
 # Build the application installation package using WiX
 #
@@ -14,6 +14,12 @@ CONFIG_DIR=$(cd $(dirname $0)/../config; pwd)
 
 # Load the scripts/common.sh file
 source $SCRIPT_DIR/common.sh
+
+# Only run on windows
+if [ $PLATFORM_WINDOWS = 0 ]; then
+  echo "This script can only be run on Windows"
+  exit 1
+fi
 
 # Load the project name
 SHORT_NAME=$(build_setting "PROJECT_ID")
@@ -187,34 +193,33 @@ echo "    }" >> "$VERSIONS_JSON_PATH"
 echo "  ]" >> "$VERSIONS_JSON_PATH"
 echo "}" >> "$VERSIONS_JSON_PATH"
 
-# Use gcloud to upload the file to the bucket wallet-releases-01
+# Use gcloud to upload the file to the bucket $SHORT_NAME-releases-01
 echo "Uploading $MSI_OUTPUT_PATH to the releases bucket"
 echo
 MSI_BASENAME=$(basename "$MSI_OUTPUT_PATH")
-gsutil cp "$MSI_OUTPUT_PATH" "gs://wallet-releases-01/$MSI_BASENAME"
+gsutil cp "$MSI_OUTPUT_PATH" "gs://${SHORT_NAME}-releases-01/$MSI_BASENAME"
 if [ $? -ne 0 ]; then
   echo "Failed to upload $MSI_OUTPUT_PATH to the releases bucket"
   exit 1
 fi
 
-PROJECT_PORTABLE_EXE_PATH="releases/wallet_release_latest_backend_portable.exe"
+PROJECT_PORTABLE_EXE_PATH="releases/${SHORT_NAME}_release_latest_portable.exe"
 publish_file "$PROJECT_EXE_PATH" "$PROJECT_PORTABLE_EXE_PATH"
 PROJECT_PORTABLE_EXE_BASENAME=$(basename "$PROJECT_PORTABLE_EXE_PATH")
-gsutil cp "$PROJECT_PORTABLE_EXE_PATH" "gs://wallet-releases-01/$PROJECT_PORTABLE_EXE_BASENAME"
+gsutil cp "$PROJECT_PORTABLE_EXE_PATH" "gs://${SHORT_NAME}-releases-01/$PROJECT_PORTABLE_EXE_BASENAME"
 if [ $? -ne 0 ]; then
   echo "Failed to upload $PROJECT_PORTABLE_EXE_PATH to the releases bucket"
   exit 1
 fi
 
 VERSIONS_JSON_BASENAME=$(basename "$VERSIONS_JSON_PATH")
-gsutil cp "$VERSIONS_JSON_PATH" "gs://wallet-releases-01/$VERSIONS_JSON_BASENAME"
+gsutil cp "$VERSIONS_JSON_PATH" "gs://${SHORT_NAME}-releases-01/$VERSIONS_JSON_BASENAME"
 if [ $? -ne 0 ]; then
   echo "Failed to upload $VERSIONS_JSON_PATH to the releases bucket"
   exit 1
 fi
 
-publish_file "CHANGELOG.md" "../ballet/public/"
-gsutil cp "CHANGELOG.md" "gs://wallet-releases-01/CHANGELOG.md"
+gsutil cp "CHANGELOG.md" "gs://${SHORT_NAME}-releases-01/CHANGELOG.md"
 if [ $? -ne 0 ]; then
   echo "Failed to upload $VERSIONS_JSON_PATH to the releases bucket"
   exit 1

@@ -1,6 +1,6 @@
 #
+# License: https://wiimag.com/LICENSE
 # Copyright 2022-2023 - All rights reserved.
-# License: https://equals-forty-two.com/LICENSE
 #
 # CMake entry point to build the project solutions
 #
@@ -46,7 +46,7 @@ include(${SHARED_MODULE_PATH})
 set(SHARED_OPTIONS_PATH ${CMAKE_SOURCE_DIR}/config/options.cmake CACHE PATH "Shared options path")
 include(${SHARED_OPTIONS_PATH})
 
-# Read the PROJECT_ID=... from the config/build.settings file
+# Read the PROJECT_ID=... from the build configs
 read_build_settings_property("PROJECT_ID" ProjectId)
 string(REPLACE " " "_" ProjectId ${ProjectId})
 
@@ -166,11 +166,20 @@ if(NOT BUILD_ENABLE_LOCALIZATION)
 endif()
 
 # Define BUILD_TESTS if BUILD_ENABLE_TESTS is ON
+add_compile_options("$<$<CONFIG:DEPLOY>:-DBUILD_TESTS=0>")
 if(BUILD_ENABLE_TESTS)
-    add_compile_options("$<$<CONFIG:DEPLOY>:-DBUILD_TESTS=0>")
     add_compile_options("$<$<CONFIG:DEBUG,RELEASE>:-DBUILD_TESTS=1>")
 else()
     add_compile_options(-DBUILD_TESTS=0)
+endif()
+
+#
+# Define custom application build target
+#
+if (BUILD_ENABLE_BACKEND)
+    add_compile_options(-DBUILD_BACKEND=1)
+else()
+    add_compile_options(-DBUILD_BACKEND=0)
 endif()
 
 # Set compiler specific flags

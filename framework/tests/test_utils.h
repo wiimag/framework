@@ -1,6 +1,6 @@
 /*
- * Copyright 2022-2023 - All rights reserved.
- * License: https://equals-forty-two.com/LICENSE
+ * License: https://wiimag.com/LICENSE
+ * Copyright 2023 Wiimag Inc. All rights reserved.
  * 
  * Testing helpers. Most helpers are written in UPPERCASE in order to blend 
  * well with doctest MACROS.
@@ -181,5 +181,10 @@ void TEST_RENDER_FRAME(const function<void()>& render_callback, const function<v
 void TEST_CLEAR_FRAME();
 
 void REQUIRE_WAIT(bool* watch_var, double timeout_seconds = 5.0);
+
+FOUNDATION_FORCEINLINE void CHECK_NEAR_EQ(double a, double b, double epsilon = 0.0001)
+{
+    CHECK_LE(std::abs(a - b), epsilon);
+}
 
 #endif
