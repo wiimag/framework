@@ -649,8 +649,17 @@ FOUNDATION_STATIC search_result_t* search_query_evaluate_node(
     else if (node->type == SearchQueryNodeType::And)
     {        
         search_result_t* left = search_query_evaluate_node(node->left, handler, and_set, exclude, user_data);
+        if (left == nullptr)
+            array_reserve(left, 1);
+
         search_result_t* right = search_query_evaluate_node(node->right, handler, left, exclude, user_data);
         array_deallocate(left);
+
+        // If the right side is null, we need to return an empty set because the nullptr 
+        // is used to indicate that the left side is the result set
+        if (right == nullptr)
+            array_reserve(right, 1);
+
         return right;
     }
     else if (node->type == SearchQueryNodeType::Or)

@@ -1,8 +1,9 @@
 /*
  * License: https://wiimag.com/LICENSE
- * Copyright 2022-2023 Wiimag Inc. All rights reserved.
+ * Copyright 2023 Wiimag Inc. All rights reserved.
+ *
+ * Example main entry point.
  */
-
 
 #include "settings.h"
 

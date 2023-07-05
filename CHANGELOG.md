@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.3.0] - 2023-07-05
+- Add `AppMenu::DynamicName` to prevent application menu item to be translated by default.
+- Add `AppMenu::Separator` to append a separator after a menu item.
+- Add `array_reverse` to reverse a dynamic array.
+- Add `config_parse_yaml` to parse basic YAML files into a `config_handle_t` object.
+- Add `math_cosine_similarity` to compute the cosine similarity between two vectors (e.g. embedding vectors obtained from a neural network).
+- Add `stream_peek` to peek the next character in a stream without affecting the stream position (if possible).
+- Add `stream_read_consume_until` to read a stream until a given character is found and return the consumed string.
+- Add `stream_skip_consume_until` to skip a stream until a given character is found.
+- Add `string_camel_case_add_space` to add a space before each uppercase character in a camel case string.
+- Add `string_char_is_alphanumeric` to check if a character is alphanumeric.
+- Add `string_char_is_digit` to check if a character is a digit.
+- Add `string_char_is_letter` to check if a character is a letter.
+- Add `string_char_is_uppercase` and `string_char_is_lowercase` to check if a character is uppercase or lowercase.
+- Add `string_char_is_whitespace` to check if a character is a whitespace.
+- Add `string_strip_begin` and `string_strip_end` to strip a string from a given character at the beginning or at the end.
+- Add `system_select_directory_dialog` to prompt the user to select a directory.
+- Fix command line processes showing a console window when spawning.
+- Fix search query with unknown words.
+- Improve the table contextual menu item padding.
+- Move font files to `resources/fonts` folder.
+
 ## [1.2.1] - 2023-06-27
 - Add `app_close_dialogs` to explicitly close all dialogs.
 - Add `array_remove_ptr` to remove the element in array from its pointer reference.
